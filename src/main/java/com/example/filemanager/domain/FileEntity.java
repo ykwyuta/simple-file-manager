@@ -65,6 +65,17 @@ public class FileEntity {
     @Column(name = "versioning_enabled")
     private Boolean versioningEnabled;
 
+    @Column(name = "is_locked")
+    private boolean isLocked = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "locked_by_user_id")
+    private User lockedBy;
+
+    @Column(name = "locked_at")
+    private LocalDateTime lockedAt;
+
+
     // Getters and Setters
 
     public Long getId() {
@@ -177,5 +188,29 @@ public class FileEntity {
 
     public void setVersioningEnabled(Boolean versioningEnabled) {
         this.versioningEnabled = versioningEnabled;
+    }
+
+    public boolean isLocked() {
+        return isLocked;
+    }
+
+    public void setLocked(boolean locked) {
+        isLocked = locked;
+    }
+
+    public User getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(User lockedBy) {
+        this.lockedBy = lockedBy;
+    }
+
+    public LocalDateTime getLockedAt() {
+        return lockedAt;
+    }
+
+    public void setLockedAt(LocalDateTime lockedAt) {
+        this.lockedAt = lockedAt;
     }
 }
