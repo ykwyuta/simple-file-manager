@@ -92,7 +92,7 @@ class FileServiceTest {
         request.setParentFolderId(null);
         request.setPermissions("755");
 
-        when(fileRepository.findByParentAndName(null, "Documents")).thenReturn(Optional.empty());
+        when(fileRepository.findByParentAndNameAndDeletedAtIsNull(null, "Documents")).thenReturn(Optional.empty());
         when(fileRepository.save(any(FileEntity.class))).thenAnswer(invocation -> {
             FileEntity entity = invocation.getArgument(0);
             entity.setId(1L);
@@ -124,8 +124,8 @@ class FileServiceTest {
         request.setParentFolderId(1L);
         request.setPermissions("750");
 
-        when(fileRepository.findById(1L)).thenReturn(Optional.of(parentFolder));
-        when(fileRepository.findByParentAndName(parentFolder, "Images")).thenReturn(Optional.empty());
+        when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(parentFolder));
+        when(fileRepository.findByParentAndNameAndDeletedAtIsNull(parentFolder, "Images")).thenReturn(Optional.empty());
         when(fileRepository.save(any(FileEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // When
@@ -147,7 +147,7 @@ class FileServiceTest {
         request.setParentFolderId(99L);
         request.setPermissions("700");
 
-        when(fileRepository.findById(99L)).thenReturn(Optional.empty());
+        when(fileRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.empty());
 
         // When & Then
         assertThrows(ResourceNotFoundException.class, () -> fileService.createDirectory(request));
@@ -166,7 +166,7 @@ class FileServiceTest {
         request.setParentFolderId(null);
         request.setPermissions("755");
 
-        when(fileRepository.findByParentAndName(null, "Documents")).thenReturn(Optional.of(existingFile));
+        when(fileRepository.findByParentAndNameAndDeletedAtIsNull(null, "Documents")).thenReturn(Optional.of(existingFile));
 
         // When & Then
         assertThrows(DuplicateFileException.class, () -> fileService.createDirectory(request));
@@ -181,7 +181,7 @@ class FileServiceTest {
         Long parentFolderId = null;
         String permissions = "644";
 
-        when(fileRepository.findByParentAndName(null, "test.txt")).thenReturn(Optional.empty());
+        when(fileRepository.findByParentAndNameAndDeletedAtIsNull(null, "test.txt")).thenReturn(Optional.empty());
         when(fileRepository.save(any(FileEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // When
@@ -213,7 +213,7 @@ class FileServiceTest {
         Long parentFolderId = 99L;
         String permissions = "644";
 
-        when(fileRepository.findById(99L)).thenReturn(Optional.empty());
+        when(fileRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.empty());
 
         // When & Then
         assertThrows(ResourceNotFoundException.class, () -> fileService.uploadFile(file, parentFolderId, permissions));
@@ -229,7 +229,7 @@ class FileServiceTest {
         Long parentFolderId = null;
         String permissions = "644";
 
-        when(fileRepository.findByParentAndName(null, "test.txt")).thenReturn(Optional.of(new FileEntity()));
+        when(fileRepository.findByParentAndNameAndDeletedAtIsNull(null, "test.txt")).thenReturn(Optional.of(new FileEntity()));
 
         // When & Then
         assertThrows(DuplicateFileException.class, () -> fileService.uploadFile(file, parentFolderId, permissions));
@@ -263,7 +263,7 @@ class FileServiceTest {
     @Test
     void findFileById_Failure_NotFound() {
         // Given
-        when(fileRepository.findById(99L)).thenReturn(Optional.empty());
+        when(fileRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.empty());
 
         // When & Then
         assertThrows(ResourceNotFoundException.class, () -> fileService.findFileById(99L));
@@ -303,7 +303,7 @@ class FileServiceTest {
         // Given
         FileEntity fileEntity = new FileEntity();
         fileEntity.setId(1L);
-        when(fileRepository.findById(1L)).thenReturn(Optional.of(fileEntity));
+        when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(fileEntity));
         when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
 
         // When
@@ -320,10 +320,53 @@ class FileServiceTest {
         // Given
         FileEntity fileEntity = new FileEntity();
         fileEntity.setId(1L);
-        when(fileRepository.findById(1L)).thenReturn(Optional.of(fileEntity));
+        when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(fileEntity));
         when(permissionService.canRead(fileEntity, testUser)).thenReturn(false);
 
         // When & Then
         assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> fileService.findFileById(1L));
+    }
+
+    @Test
+    void softDeleteFile_Success() {
+        setupAuthentication();
+        // Given
+        FileEntity fileEntity = new FileEntity();
+        fileEntity.setId(1L);
+        when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(fileEntity));
+        when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
+
+        // When
+        fileService.softDeleteFile(1L);
+
+        // Then
+        ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
+        verify(fileRepository, times(1)).save(fileEntityCaptor.capture());
+        assertNotNull(fileEntityCaptor.getValue().getDeletedAt());
+    }
+
+    @Test
+    void softDeleteFile_Failure_NotFound() {
+        setupAuthentication();
+        // Given
+        when(fileRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.empty());
+
+        // When & Then
+        assertThrows(ResourceNotFoundException.class, () -> fileService.softDeleteFile(99L));
+        verify(fileRepository, never()).save(any());
+    }
+
+    @Test
+    void softDeleteFile_Failure_NoPermission() {
+        setupAuthentication();
+        // Given
+        FileEntity fileEntity = new FileEntity();
+        fileEntity.setId(1L);
+        when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(fileEntity));
+        when(permissionService.canWrite(fileEntity, testUser)).thenReturn(false);
+
+        // When & Then
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> fileService.softDeleteFile(1L));
+        verify(fileRepository, never()).save(any());
     }
 }
