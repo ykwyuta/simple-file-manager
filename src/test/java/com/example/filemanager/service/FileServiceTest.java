@@ -886,4 +886,281 @@ class FileServiceTest {
     verify(fileRepository, times(1)).save(fileEntityCaptor.capture());
     assertEquals("restored-key", fileEntityCaptor.getValue().getStorageKey());
   }
+
+  // Test Case 1.1
+  @Test
+  void updateFile_WhenVersioningIsEnabledMidway_CreatesHistoryFromThatPoint() throws IOException {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    MockMultipartFile fileV2 = new MockMultipartFile("file", "file.txt", "text/plain", "version 2".getBytes());
+
+    FileEntity parent = new FileEntity();
+    parent.setId(10L);
+    parent.setVersioningEnabled(false); // Versioning is initially off
+
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setName("file.txt");
+    fileEntity.setParent(parent);
+    fileEntity.setStorageKey("v1-key");
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(any(), any())).thenReturn(true);
+    when(permissionService.canWrite(any(), any())).thenReturn(true);
+
+    // Action 1: Enable versioning
+    parent.setVersioningEnabled(true);
+
+    // Action 2: Update the file
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(Collections.emptyList());
+    fileService.updateFile(fileId, fileV2);
+
+    // Then
+    ArgumentCaptor<FileHistory> historyCaptor = ArgumentCaptor.forClass(FileHistory.class);
+    verify(fileHistoryRepository).save(historyCaptor.capture());
+    FileHistory savedHistory = historyCaptor.getValue();
+
+    assertEquals(1, savedHistory.getVersion()); // First version recorded
+    assertEquals("v1-key", savedHistory.getStorageKey()); // The *previous* content is saved to history
+
+    ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
+    verify(fileRepository).save(fileEntityCaptor.capture());
+    assertNotEquals("v1-key", fileEntityCaptor.getValue().getStorageKey()); // Current version has new key
+  }
+
+  // Test Case 1.2 & 1.3
+  @Test
+  void updateFile_WhenVersioningIsDisabled_OverwritesFileAndPreservesHistory() throws IOException {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    FileEntity parent = new FileEntity();
+    parent.setVersioningEnabled(true);
+
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setParent(parent);
+    fileEntity.setStorageKey("v2-key");
+
+    FileHistory v1 = new FileHistory();
+    v1.setVersion(1);
+    v1.setStorageKey("v1-key");
+    List<FileHistory> existingHistory = List.of(v1);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(any(), any())).thenReturn(true);
+    when(permissionService.canWrite(any(), any())).thenReturn(true);
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(existingHistory);
+
+    // Action 1: Disable versioning
+    parent.setVersioningEnabled(false);
+
+    // Action 2: Update the file (v3)
+    MockMultipartFile fileV3 = new MockMultipartFile("file", "update.txt", "text/plain", "version 3".getBytes());
+    fileService.updateFile(fileId, fileV3);
+
+    // Then 2: No new history should be created
+    verify(fileHistoryRepository, never()).save(any(FileHistory.class));
+    ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
+    verify(fileRepository).save(fileEntityCaptor.capture());
+    assertEquals("v2-key", fileEntityCaptor.getValue().getStorageKey()); // S3 object is overwritten
+
+    // Then 3: Existing history is still accessible
+    List<FileHistory> retrievedHistory = fileService.getFileVersions(fileId);
+    assertEquals(1, retrievedHistory.size());
+    assertEquals(1, retrievedHistory.get(0).getVersion());
+  }
+
+  // Test Case 2.1
+  @Test
+  void moveFile_FromVersionedToNonVersionedFolder_PreservesHistory() throws IOException {
+    setupAuthentication();
+    // Given
+    FileEntity file = new FileEntity();
+    file.setId(1L);
+    file.setName("history-file.txt");
+    FileHistory v1 = new FileHistory();
+    v1.setVersion(1);
+
+    FileEntity versionedFolder = new FileEntity();
+    versionedFolder.setId(10L);
+    versionedFolder.setVersioningEnabled(true);
+    file.setParent(versionedFolder);
+
+    FileEntity nonVersionedFolder = new FileEntity();
+    nonVersionedFolder.setId(11L);
+    nonVersionedFolder.setDirectory(true);
+    nonVersionedFolder.setVersioningEnabled(false);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(file));
+    when(fileRepository.findByIdAndDeletedAtIsNull(11L)).thenReturn(Optional.of(nonVersionedFolder));
+    when(permissionService.canWrite(any(), any())).thenReturn(true);
+    when(permissionService.canRead(any(), any())).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(any(), any())).thenReturn(Optional.empty());
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(1L)).thenReturn(List.of(v1));
+    when(fileRepository.save(any(FileEntity.class))).thenReturn(file);
+
+
+    // Action 1: Move the file
+    fileService.moveFile(1L, 11L);
+
+    // Action 2: Update the file in the new, non-versioned location
+    MockMultipartFile update = new MockMultipartFile("file", "update.txt", "text/plain", "updated".getBytes());
+    fileService.updateFile(1L, update);
+
+    // Then: History is preserved, but no new history is created
+    verify(fileHistoryRepository, never()).save(any(FileHistory.class));
+    List<FileHistory> history = fileService.getFileVersions(1L);
+    assertEquals(1, history.size());
+    assertEquals(1, history.get(0).getVersion());
+  }
+
+  // Test Case 2.2
+  @Test
+  void moveFile_FromNonVersionedToVersionedFolder_StartsVersioningOnUpdate() throws IOException {
+    setupAuthentication();
+    // Given
+    FileEntity file = new FileEntity();
+    file.setId(1L);
+    file.setName("new-file.txt");
+    file.setStorageKey("original-key");
+
+    FileEntity nonVersionedFolder = new FileEntity();
+    nonVersionedFolder.setId(10L);
+    nonVersionedFolder.setVersioningEnabled(false);
+    file.setParent(nonVersionedFolder);
+
+    FileEntity versionedFolder = new FileEntity();
+    versionedFolder.setId(11L);
+    versionedFolder.setDirectory(true);
+    versionedFolder.setVersioningEnabled(true);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(file));
+    when(fileRepository.findByIdAndDeletedAtIsNull(11L)).thenReturn(Optional.of(versionedFolder));
+    when(permissionService.canWrite(any(), any())).thenReturn(true);
+    when(permissionService.canRead(any(), any())).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(any(), any())).thenReturn(Optional.empty());
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(1L)).thenReturn(Collections.emptyList());
+    when(fileRepository.save(any(FileEntity.class))).thenReturn(file);
+
+
+    // Action 1: Move the file
+    fileService.moveFile(1L, 11L);
+
+    // Action 2: Update the file in the new versioned location
+    MockMultipartFile update = new MockMultipartFile("file", "update.txt", "text/plain", "updated".getBytes());
+    fileService.updateFile(1L, update);
+
+    // Then: First version history is created
+    ArgumentCaptor<FileHistory> historyCaptor = ArgumentCaptor.forClass(FileHistory.class);
+    verify(fileHistoryRepository).save(historyCaptor.capture());
+    assertEquals(1, historyCaptor.getValue().getVersion());
+    assertEquals("original-key", historyCaptor.getValue().getStorageKey());
+  }
+
+  // Test Case 2.3
+  @Test
+  void moveFile_VersionedFolderToAnotherLocation_MaintainsSettings() {
+    setupAuthentication();
+    // Given
+    FileEntity versionedFolder = new FileEntity();
+    versionedFolder.setId(1L);
+    versionedFolder.setDirectory(true);
+    versionedFolder.setVersioningEnabled(true);
+    versionedFolder.setName("Versioned");
+
+    FileEntity destinationFolder = new FileEntity();
+    destinationFolder.setId(2L);
+    destinationFolder.setDirectory(true);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(versionedFolder));
+    when(fileRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(Optional.of(destinationFolder));
+    when(permissionService.canWrite(any(), any())).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(any(), any())).thenReturn(Optional.empty());
+    when(fileRepository.save(any(FileEntity.class))).thenReturn(versionedFolder);
+
+
+    // When
+    FileEntity result = fileService.moveFile(1L, 2L);
+
+    // Then
+    assertTrue(result.getVersioningEnabled());
+    assertEquals(destinationFolder, result.getParent());
+    verify(fileRepository).save(versionedFolder);
+  }
+
+  // Test Case 3.1
+  @Test
+  void restoreFile_WithHistory_Success() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    FileEntity fileToRestore = new FileEntity();
+    fileToRestore.setId(fileId);
+    fileToRestore.setDeletedAt(java.time.LocalDateTime.now());
+    FileHistory v1 = new FileHistory();
+    v1.setVersion(1);
+
+    when(fileRepository.findByIdAndDeletedAtIsNotNull(fileId)).thenReturn(Optional.of(fileToRestore));
+    when(permissionService.canWrite(fileToRestore, testUser)).thenReturn(true);
+    when(fileRepository.save(any(FileEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(List.of(v1));
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToRestore));
+    when(permissionService.canRead(fileToRestore, testUser)).thenReturn(true);
+
+
+    // When
+    FileEntity result = fileService.restoreFile(fileId);
+    List<FileHistory> history = fileService.getFileVersions(fileId);
+
+
+    // Then
+    assertNull(result.getDeletedAt());
+    assertEquals(1, history.size());
+    verify(fileRepository).save(fileToRestore);
+  }
+
+  // Test Case 4.2
+  @Test
+  void restoreFileVersion_Failure_NoWritePermission() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long versionId = 2L;
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(false); // No write permission
+
+    // When & Then
+    assertThrows(org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.restoreFileVersion(fileId, versionId));
+
+    verify(fileHistoryRepository, never()).findById(any());
+    verify(fileRepository, never()).save(any());
+  }
+
+  // Test Case 4.3
+  @Test
+  void toggleVersioning_Failure_NoWritePermission() {
+    setupAuthentication();
+    // Given
+    Long folderId = 1L;
+    FileEntity folder = new FileEntity();
+    folder.setId(folderId);
+    folder.setDirectory(true);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(folderId)).thenReturn(Optional.of(folder));
+    when(permissionService.canRead(folder, testUser)).thenReturn(true);
+    when(permissionService.canWrite(folder, testUser)).thenReturn(false); // No write permission
+
+    // When & Then
+    assertThrows(org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.toggleVersioning(folderId, true));
+
+    verify(fileRepository, never()).save(any());
+  }
 }
