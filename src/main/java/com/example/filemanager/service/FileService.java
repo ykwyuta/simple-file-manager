@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -43,14 +44,14 @@ public class FileService {
 
         FileEntity parent = null;
         if (parentFolderId != null) {
-            parent = fileRepository.findById(parentFolderId)
+            parent = fileRepository.findByIdAndDeletedAtIsNull(parentFolderId)
                     .orElseThrow(() -> new ResourceNotFoundException("Parent folder not found with id: " + parentFolderId));
             if (!parent.isDirectory()) {
                 throw new ParentNotDirectoryException("Parent with id " + parentFolderId + " is not a directory.");
             }
         }
 
-        fileRepository.findByParentAndName(parent, file.getOriginalFilename())
+        fileRepository.findByParentAndNameAndDeletedAtIsNull(parent, file.getOriginalFilename())
                 .ifPresent(f -> {
                     throw new DuplicateFileException("A file or directory with the name '" + file.getOriginalFilename() + "' already exists in this location.");
                 });
@@ -91,7 +92,7 @@ public class FileService {
     @Transactional(readOnly = true)
     public FileEntity findFileById(Long fileId) {
         User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        FileEntity fileEntity = fileRepository.findById(fileId)
+        FileEntity fileEntity = fileRepository.findByIdAndDeletedAtIsNull(fileId)
                 .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
         if (!permissionService.canRead(fileEntity, currentUser)) {
@@ -108,14 +109,14 @@ public class FileService {
 
         FileEntity parent = null;
         if (request.getParentFolderId() != null) {
-            parent = fileRepository.findById(request.getParentFolderId())
+            parent = fileRepository.findByIdAndDeletedAtIsNull(request.getParentFolderId())
                     .orElseThrow(() -> new ResourceNotFoundException("Parent folder not found with id: " + request.getParentFolderId()));
             if (!parent.isDirectory()) {
                 throw new ParentNotDirectoryException("Parent with id " + request.getParentFolderId() + " is not a directory.");
             }
         }
 
-        fileRepository.findByParentAndName(parent, request.getName())
+        fileRepository.findByParentAndNameAndDeletedAtIsNull(parent, request.getName())
                 .ifPresent(f -> {
                     throw new DuplicateFileException("A file or directory with the name '" + request.getName() + "' already exists in this location.");
                 });
@@ -134,5 +135,19 @@ public class FileService {
         newDirectory.setPermissions(Integer.parseInt(request.getPermissions(), 8)); // Parse octal string
 
         return fileRepository.save(newDirectory);
+    }
+
+    @Transactional
+    public void softDeleteFile(Long fileId) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        FileEntity fileEntity = fileRepository.findByIdAndDeletedAtIsNull(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+        if (!permissionService.canWrite(fileEntity, currentUser)) {
+            throw new AccessDeniedException("You do not have permission to delete this file.");
+        }
+
+        fileEntity.setDeletedAt(LocalDateTime.now());
+        fileRepository.save(fileEntity);
     }
 }

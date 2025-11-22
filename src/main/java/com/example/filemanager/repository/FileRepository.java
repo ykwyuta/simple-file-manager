@@ -10,11 +10,19 @@ import java.util.Optional;
 public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     /**
-     * Finds a file by its parent folder and name.
+     * Finds a file by its ID, only if it has not been soft-deleted.
+     *
+     * @param id The ID of the file.
+     * @return An Optional containing the FileEntity if found and not deleted, or empty otherwise.
+     */
+    Optional<FileEntity> findByIdAndDeletedAtIsNull(Long id);
+
+    /**
+     * Finds a file by its parent folder and name, only if it has not been soft-deleted.
      *
      * @param parent The parent folder entity.
      * @param name   The name of the file or folder.
-     * @return An Optional containing the FileEntity if found, or empty otherwise.
+     * @return An Optional containing the FileEntity if found and not deleted, or empty otherwise.
      */
-    Optional<FileEntity> findByParentAndName(FileEntity parent, String name);
+    Optional<FileEntity> findByParentAndNameAndDeletedAtIsNull(FileEntity parent, String name);
 }
