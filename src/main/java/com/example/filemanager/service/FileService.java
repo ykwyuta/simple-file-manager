@@ -232,4 +232,46 @@ public class FileService {
         .filter(file -> permissionService.canRead(file, currentUser))
         .collect(Collectors.toList());
   }
+
+  @Transactional
+  public FileEntity moveFile(Long fileId, Long newParentId) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileToMove =
+        fileRepository
+            .findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    if (!permissionService.canWrite(fileToMove, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to move this file.");
+    }
+
+    FileEntity destinationFolder =
+        fileRepository
+            .findByIdAndDeletedAtIsNull(newParentId)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("Destination folder not found with id: " + newParentId));
+
+    if (!destinationFolder.isDirectory()) {
+      throw new ParentNotDirectoryException(
+          "Destination with id " + newParentId + " is not a directory.");
+    }
+
+    if (!permissionService.canWrite(destinationFolder, currentUser)) {
+      throw new AccessDeniedException(
+          "You do not have permission to move files into the destination folder.");
+    }
+
+    fileRepository
+        .findByParentAndNameAndDeletedAtIsNull(destinationFolder, fileToMove.getName())
+        .ifPresent(
+            f -> {
+              throw new DuplicateFileException(
+                  "A file or directory with the name '"
+                      + fileToMove.getName()
+                      + "' already exists in the destination folder.");
+            });
+
+    fileToMove.setParent(destinationFolder);
+    return fileRepository.save(fileToMove);
+  }
 }

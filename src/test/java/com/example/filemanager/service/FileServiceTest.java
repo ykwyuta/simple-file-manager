@@ -530,4 +530,140 @@ class FileServiceTest {
     assertThrows(DuplicateFileException.class, () -> fileService.renameFile(fileId, newName));
     verify(fileRepository, never()).save(any());
   }
+
+  @Test
+  void moveFile_Success() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long newParentId = 2L;
+
+    FileEntity fileToMove = new FileEntity();
+    fileToMove.setId(fileId);
+    fileToMove.setName("file-to-move.txt");
+
+    FileEntity destinationFolder = new FileEntity();
+    destinationFolder.setId(newParentId);
+    destinationFolder.setName("destination");
+    destinationFolder.setDirectory(true);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToMove));
+    when(permissionService.canWrite(fileToMove, testUser)).thenReturn(true);
+    when(fileRepository.findByIdAndDeletedAtIsNull(newParentId))
+        .thenReturn(Optional.of(destinationFolder));
+    when(permissionService.canWrite(destinationFolder, testUser)).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(
+            destinationFolder, fileToMove.getName()))
+        .thenReturn(Optional.empty());
+    when(fileRepository.save(any(FileEntity.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    FileEntity result = fileService.moveFile(fileId, newParentId);
+
+    // Then
+    assertNotNull(result);
+    assertEquals(destinationFolder, result.getParent());
+    verify(fileRepository, times(1)).save(fileToMove);
+  }
+
+  @Test
+  void moveFile_Failure_DestinationIsFile() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long newParentId = 2L;
+
+    FileEntity fileToMove = new FileEntity();
+    fileToMove.setId(fileId);
+
+    FileEntity destination = new FileEntity(); // Not a directory
+    destination.setId(newParentId);
+    destination.setDirectory(false);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToMove));
+    when(permissionService.canWrite(fileToMove, testUser)).thenReturn(true);
+    when(fileRepository.findByIdAndDeletedAtIsNull(newParentId)).thenReturn(Optional.of(destination));
+
+    // When & Then
+    assertThrows(
+        com.example.filemanager.exception.ParentNotDirectoryException.class,
+        () -> fileService.moveFile(fileId, newParentId));
+    verify(fileRepository, never()).save(any());
+  }
+
+  @Test
+  void moveFile_Failure_NoPermissionOnFile() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long newParentId = 2L;
+
+    FileEntity fileToMove = new FileEntity();
+    fileToMove.setId(fileId);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToMove));
+    when(permissionService.canWrite(fileToMove, testUser)).thenReturn(false); // No permission
+
+    // When & Then
+    assertThrows(
+        org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.moveFile(fileId, newParentId));
+  }
+
+  @Test
+  void moveFile_Failure_NoPermissionOnDestination() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long newParentId = 2L;
+
+    FileEntity fileToMove = new FileEntity();
+    fileToMove.setId(fileId);
+
+    FileEntity destinationFolder = new FileEntity();
+    destinationFolder.setId(newParentId);
+    destinationFolder.setDirectory(true);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToMove));
+    when(permissionService.canWrite(fileToMove, testUser)).thenReturn(true);
+    when(fileRepository.findByIdAndDeletedAtIsNull(newParentId))
+        .thenReturn(Optional.of(destinationFolder));
+    when(permissionService.canWrite(destinationFolder, testUser)).thenReturn(false); // No permission
+
+    // When & Then
+    assertThrows(
+        org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.moveFile(fileId, newParentId));
+  }
+
+  @Test
+  void moveFile_Failure_DuplicateNameInDestination() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long newParentId = 2L;
+
+    FileEntity fileToMove = new FileEntity();
+    fileToMove.setId(fileId);
+    fileToMove.setName("file.txt");
+
+    FileEntity destinationFolder = new FileEntity();
+    destinationFolder.setId(newParentId);
+    destinationFolder.setDirectory(true);
+
+    FileEntity existingFile = new FileEntity();
+    existingFile.setName("file.txt");
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToMove));
+    when(permissionService.canWrite(fileToMove, testUser)).thenReturn(true);
+    when(fileRepository.findByIdAndDeletedAtIsNull(newParentId))
+        .thenReturn(Optional.of(destinationFolder));
+    when(permissionService.canWrite(destinationFolder, testUser)).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(destinationFolder, "file.txt"))
+        .thenReturn(Optional.of(existingFile));
+
+    // When & Then
+    assertThrows(DuplicateFileException.class, () -> fileService.moveFile(fileId, newParentId));
+  }
 }
