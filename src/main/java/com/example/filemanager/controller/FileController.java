@@ -4,6 +4,7 @@ import com.example.filemanager.controller.dto.FileResponse;
 import com.example.filemanager.controller.dto.FolderRequest;
 import com.example.filemanager.controller.dto.FileHistoryResponse;
 import com.example.filemanager.controller.dto.MoveRequest;
+import com.example.filemanager.controller.dto.LockRequest;
 import com.example.filemanager.controller.dto.RenameRequest;
 import com.example.filemanager.controller.dto.VersioningRequest;
 import com.example.filemanager.domain.FileEntity;
@@ -22,6 +23,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -101,6 +104,13 @@ public class FileController {
       @PathVariable Long id, @Valid @RequestBody RenameRequest request) {
     FileEntity updatedFile = fileService.renameFile(id, request.getNewName());
     return ResponseEntity.ok(new FileResponse(updatedFile));
+  }
+
+  @PutMapping("/{id}/lock")
+  public ResponseEntity<Void> updateLockStatus(@PathVariable Long id, @RequestBody LockRequest lockRequest,
+          @AuthenticationPrincipal UserDetails userDetails) {
+      fileService.updateLockStatus(id, lockRequest.isLocked(), userDetails.getUsername());
+      return ResponseEntity.noContent().build();
   }
 
   @GetMapping("/trash")

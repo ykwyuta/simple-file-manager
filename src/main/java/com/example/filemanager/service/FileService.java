@@ -8,10 +8,12 @@ import com.example.filemanager.exception.DuplicateFileException;
 import com.example.filemanager.exception.InvalidPermissionFormatException;
 import com.example.filemanager.domain.FileHistory;
 import com.example.filemanager.exception.ParentNotDirectoryException;
+import com.example.filemanager.exception.FileLockedException;
 import com.example.filemanager.exception.ResourceNotFoundException;
 import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.FileSpecification;
+import com.example.filemanager.repository.UserRepository;
 import io.awspring.cloud.s3.S3Template;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -34,6 +36,7 @@ public class FileService {
   private final FileHistoryRepository fileHistoryRepository;
   private final S3Template s3Template;
   private final PermissionService permissionService;
+  private final UserRepository userRepository;
 
   @Value("${S3_BUCKET_NAME}")
   private String bucketName;
@@ -42,11 +45,13 @@ public class FileService {
       FileRepository fileRepository,
       FileHistoryRepository fileHistoryRepository,
       S3Template s3Template,
-      PermissionService permissionService) {
+      PermissionService permissionService,
+      UserRepository userRepository) {
     this.fileRepository = fileRepository;
     this.fileHistoryRepository = fileHistoryRepository;
     this.s3Template = s3Template;
     this.permissionService = permissionService;
+    this.userRepository = userRepository;
   }
 
   @Transactional
@@ -112,6 +117,8 @@ public class FileService {
     if (!permissionService.canWrite(fileEntity, currentUser)) {
       throw new AccessDeniedException("You do not have permission to write to this file.");
     }
+
+    checkFileLock(fileEntity, currentUser);
 
     if (fileEntity.isDirectory()) {
       throw new IllegalArgumentException("Cannot upload content to a directory.");
@@ -237,6 +244,8 @@ public class FileService {
       throw new AccessDeniedException("You do not have permission to delete this file.");
     }
 
+    checkFileLock(fileEntity, currentUser);
+
     fileEntity.setDeletedAt(LocalDateTime.now());
     fileRepository.save(fileEntity);
   }
@@ -252,6 +261,8 @@ public class FileService {
     if (!permissionService.canWrite(fileEntity, currentUser)) {
       throw new AccessDeniedException("You do not have permission to rename this file.");
     }
+
+    checkFileLock(fileEntity, currentUser);
 
     fileRepository
         .findByParentAndNameAndDeletedAtIsNull(fileEntity.getParent(), newName)
@@ -297,6 +308,8 @@ public class FileService {
     if (!permissionService.canWrite(fileToMove, currentUser)) {
       throw new AccessDeniedException("You do not have permission to move this file.");
     }
+
+    checkFileLock(fileToMove, currentUser);
 
     FileEntity destinationFolder =
         fileRepository
@@ -420,5 +433,54 @@ public class FileService {
     // Restore the old storage key
     fileEntity.setStorageKey(history.getStorageKey());
     return fileRepository.save(fileEntity);
+  }
+
+  @Transactional
+  public void updateLockStatus(Long fileId, boolean lock, String username) {
+      User currentUser = userRepository.findByUsername(username)
+              .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+      FileEntity fileEntity = findFileById(fileId);
+
+      if (fileEntity.isDirectory()) {
+          throw new IllegalArgumentException("Cannot lock a directory.");
+      }
+
+      FileEntity parent = fileEntity.getParent();
+      if (parent == null || parent.getVersioningEnabled() == null || !parent.getVersioningEnabled()) {
+          throw new IllegalStateException("File lock can only be used for files in a version-controlled folder.");
+      }
+
+      if (!permissionService.canWrite(fileEntity, currentUser)) {
+          throw new AccessDeniedException("You do not have permission to change the lock status of this file.");
+      }
+
+      if (lock) {
+          if (fileEntity.isLocked() && !fileEntity.getLockedBy().equals(currentUser)) {
+              throw new FileLockedException("File is already locked by another user.");
+          }
+          fileEntity.setLocked(true);
+          fileEntity.setLockedBy(currentUser);
+          fileEntity.setLockedAt(LocalDateTime.now());
+      } else {
+          if (!fileEntity.isLocked()) {
+              // Optionally, handle the case where an unlock is attempted on an already unlocked file.
+              // For now, we'll just let it proceed silently.
+              return;
+          }
+          if (!fileEntity.getLockedBy().equals(currentUser)) {
+              throw new AccessDeniedException("You cannot unlock a file locked by another user.");
+          }
+          fileEntity.setLocked(false);
+          fileEntity.setLockedBy(null);
+          fileEntity.setLockedAt(null);
+      }
+
+      fileRepository.save(fileEntity);
+  }
+
+  private void checkFileLock(FileEntity fileEntity, User currentUser) {
+    if (fileEntity.isLocked() && (fileEntity.getLockedBy() == null || !fileEntity.getLockedBy().equals(currentUser))) {
+        throw new FileLockedException("File is locked by another user and cannot be modified.");
+    }
   }
 }
