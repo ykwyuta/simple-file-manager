@@ -666,4 +666,87 @@ class FileServiceTest {
     // When & Then
     assertThrows(DuplicateFileException.class, () -> fileService.moveFile(fileId, newParentId));
   }
+
+  @Test
+  void listDeletedFiles_Success_FiltersByPermission() {
+    setupAuthentication();
+    // Given
+    FileEntity deletedFileWithPermission = new FileEntity();
+    deletedFileWithPermission.setId(1L);
+    deletedFileWithPermission.setName("deleted1.txt");
+
+    FileEntity deletedFileWithoutPermission = new FileEntity();
+    deletedFileWithoutPermission.setId(2L);
+    deletedFileWithoutPermission.setName("deleted2.txt");
+
+    List<FileEntity> allDeletedFiles =
+        Arrays.asList(deletedFileWithPermission, deletedFileWithoutPermission);
+
+    when(fileRepository.findAllByDeletedAtIsNotNull()).thenReturn(allDeletedFiles);
+    when(permissionService.canRead(deletedFileWithPermission, testUser)).thenReturn(true);
+    when(permissionService.canRead(deletedFileWithoutPermission, testUser)).thenReturn(false);
+
+    // When
+    List<FileEntity> result = fileService.listDeletedFiles();
+
+    // Then
+    assertEquals(1, result.size());
+    assertEquals("deleted1.txt", result.get(0).getName());
+    verify(fileRepository, times(1)).findAllByDeletedAtIsNotNull();
+  }
+
+  @Test
+  void restoreFile_Success() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    FileEntity fileToRestore = new FileEntity();
+    fileToRestore.setId(fileId);
+    fileToRestore.setDeletedAt(java.time.LocalDateTime.now());
+
+    when(fileRepository.findByIdAndDeletedAtIsNotNull(fileId))
+        .thenReturn(Optional.of(fileToRestore));
+    when(permissionService.canWrite(fileToRestore, testUser)).thenReturn(true);
+    when(fileRepository.save(any(FileEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    // When
+    FileEntity result = fileService.restoreFile(fileId);
+
+    // Then
+    assertNotNull(result);
+    assertNull(result.getDeletedAt());
+    verify(fileRepository, times(1)).save(fileToRestore);
+  }
+
+  @Test
+  void restoreFile_Failure_NotFound() {
+    setupAuthentication();
+    // Given
+    Long fileId = 99L;
+    when(fileRepository.findByIdAndDeletedAtIsNotNull(fileId)).thenReturn(Optional.empty());
+
+    // When & Then
+    assertThrows(ResourceNotFoundException.class, () -> fileService.restoreFile(fileId));
+    verify(fileRepository, never()).save(any());
+  }
+
+  @Test
+  void restoreFile_Failure_NoPermission() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    FileEntity fileToRestore = new FileEntity();
+    fileToRestore.setId(fileId);
+    fileToRestore.setDeletedAt(java.time.LocalDateTime.now());
+
+    when(fileRepository.findByIdAndDeletedAtIsNotNull(fileId))
+        .thenReturn(Optional.of(fileToRestore));
+    when(permissionService.canWrite(fileToRestore, testUser)).thenReturn(false);
+
+    // When & Then
+    assertThrows(
+        org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.restoreFile(fileId));
+    verify(fileRepository, never()).save(any());
+  }
 }

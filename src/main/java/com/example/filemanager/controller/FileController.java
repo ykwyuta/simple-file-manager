@@ -93,6 +93,20 @@ public class FileController {
     return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 
+  @GetMapping("/trash")
+  public ResponseEntity<List<FileResponse>> getTrash() {
+    List<FileEntity> deletedFiles = fileService.listDeletedFiles();
+    List<FileResponse> response =
+        deletedFiles.stream().map(FileResponse::new).collect(Collectors.toList());
+    return ResponseEntity.ok(response);
+  }
+
+  @PostMapping("/{id}/restore")
+  public ResponseEntity<FileResponse> restoreFile(@PathVariable Long id) {
+    FileEntity restoredFile = fileService.restoreFile(id);
+    return ResponseEntity.ok(new FileResponse(restoredFile));
+  }
+
   @GetMapping("/search")
   public ResponseEntity<List<FileResponse>> searchFiles(
       @RequestParam(value = "name", required = false) String name,
