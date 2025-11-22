@@ -6,8 +6,10 @@ import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
 import com.example.filemanager.exception.DuplicateFileException;
 import com.example.filemanager.exception.InvalidPermissionFormatException;
+import com.example.filemanager.domain.FileHistory;
 import com.example.filemanager.exception.ParentNotDirectoryException;
 import com.example.filemanager.exception.ResourceNotFoundException;
+import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.FileSpecification;
 import io.awspring.cloud.s3.S3Template;
@@ -29,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class FileService {
 
   private final FileRepository fileRepository;
+  private final FileHistoryRepository fileHistoryRepository;
   private final S3Template s3Template;
   private final PermissionService permissionService;
 
@@ -36,8 +39,12 @@ public class FileService {
   private String bucketName;
 
   public FileService(
-      FileRepository fileRepository, S3Template s3Template, PermissionService permissionService) {
+      FileRepository fileRepository,
+      FileHistoryRepository fileHistoryRepository,
+      S3Template s3Template,
+      PermissionService permissionService) {
     this.fileRepository = fileRepository;
+    this.fileHistoryRepository = fileHistoryRepository;
     this.s3Template = s3Template;
     this.permissionService = permissionService;
   }
@@ -95,6 +102,52 @@ public class FileService {
     newFile.setStorageKey(s3Key);
 
     return fileRepository.save(newFile);
+  }
+
+  @Transactional
+  public FileEntity updateFile(Long fileId, MultipartFile file) throws IOException {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = findFileById(fileId); // This already checks read permission
+
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to write to this file.");
+    }
+
+    if (fileEntity.isDirectory()) {
+      throw new IllegalArgumentException("Cannot upload content to a directory.");
+    }
+
+    FileEntity parent = fileEntity.getParent();
+    // Check if versioning is enabled on the parent folder
+    if (parent != null && parent.getVersioningEnabled() != null && parent.getVersioningEnabled()) {
+      // Versioning is enabled, create a history record
+      int latestVersion =
+          fileHistoryRepository
+              .findByFileEntityIdOrderByVersionDesc(fileId)
+              .stream()
+              .findFirst()
+              .map(FileHistory::getVersion)
+              .orElse(0);
+
+      FileHistory history = new FileHistory();
+      history.setFileEntity(fileEntity);
+      history.setModifier(currentUser);
+      history.setStorageKey(fileEntity.getStorageKey()); // Old storage key
+      history.setVersion(latestVersion + 1);
+      fileHistoryRepository.save(history);
+
+      // Upload new file to S3 with a new key
+      String newS3Key = UUID.randomUUID() + "/" + file.getOriginalFilename();
+      s3Template.upload(bucketName, newS3Key, file.getInputStream());
+      fileEntity.setStorageKey(newS3Key); // Update entity with the new key
+    } else {
+      // Versioning is not enabled, just overwrite the file in S3
+      s3Template.upload(bucketName, fileEntity.getStorageKey(), file.getInputStream());
+    }
+
+    // Update the name in case it has changed
+    fileEntity.setName(file.getOriginalFilename());
+    return fileRepository.save(fileEntity);
   }
 
   public byte[] downloadFile(FileEntity fileEntity) throws IOException {
@@ -301,6 +354,71 @@ public class FileService {
     }
 
     fileEntity.setDeletedAt(null);
+    return fileRepository.save(fileEntity);
+  }
+
+  @Transactional
+  public FileEntity toggleVersioning(Long folderId, boolean enable) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity folder = findFileById(folderId); // This checks for existence and read permission
+
+    if (!folder.isDirectory()) {
+      throw new IllegalArgumentException("Versioning can only be enabled on directories.");
+    }
+
+    if (!permissionService.canWrite(folder, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to modify this folder.");
+    }
+
+    folder.setVersioningEnabled(enable);
+    return fileRepository.save(folder);
+  }
+
+  @Transactional(readOnly = true)
+  public List<FileHistory> getFileVersions(Long fileId) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = findFileById(fileId); // Checks read permission
+
+    if (fileEntity.isDirectory()) {
+      throw new IllegalArgumentException("Cannot get versions for a directory.");
+    }
+
+    return fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId);
+  }
+
+  @Transactional
+  public FileEntity restoreFileVersion(Long fileId, Long versionId) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = findFileById(fileId); // Checks read permission
+
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to write to this file.");
+    }
+
+    FileHistory history =
+        fileHistoryRepository
+            .findById(versionId)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("File version not found with id: " + versionId));
+
+    // Create a new history entry for the current state before restoring
+    int latestVersion =
+        fileHistoryRepository
+            .findByFileEntityIdOrderByVersionDesc(fileId)
+            .stream()
+            .findFirst()
+            .map(FileHistory::getVersion)
+            .orElse(0);
+
+    FileHistory currentVersionHistory = new FileHistory();
+    currentVersionHistory.setFileEntity(fileEntity);
+    currentVersionHistory.setModifier(currentUser);
+    currentVersionHistory.setStorageKey(fileEntity.getStorageKey());
+    currentVersionHistory.setVersion(latestVersion + 1);
+    fileHistoryRepository.save(currentVersionHistory);
+
+    // Restore the old storage key
+    fileEntity.setStorageKey(history.getStorageKey());
     return fileRepository.save(fileEntity);
   }
 }

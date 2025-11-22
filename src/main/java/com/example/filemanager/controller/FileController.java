@@ -2,9 +2,12 @@ package com.example.filemanager.controller;
 
 import com.example.filemanager.controller.dto.FileResponse;
 import com.example.filemanager.controller.dto.FolderRequest;
+import com.example.filemanager.controller.dto.FileHistoryResponse;
 import com.example.filemanager.controller.dto.MoveRequest;
 import com.example.filemanager.controller.dto.RenameRequest;
+import com.example.filemanager.controller.dto.VersioningRequest;
 import com.example.filemanager.domain.FileEntity;
+import com.example.filemanager.domain.FileHistory;
 import com.example.filemanager.service.FileService;
 import jakarta.validation.Valid;
 import java.io.IOException;
@@ -62,6 +65,13 @@ public class FileController {
             .toUri();
 
     return ResponseEntity.created(location).body(new FileResponse(newFile));
+  }
+
+  @PutMapping("/{id}")
+  public ResponseEntity<FileResponse> updateFile(
+      @PathVariable Long id, @RequestParam("file") MultipartFile file) throws IOException {
+    FileEntity updatedFile = fileService.updateFile(id, file);
+    return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 
   @GetMapping("/{id}")
@@ -122,5 +132,27 @@ public class FileController {
       @PathVariable Long id, @Valid @RequestBody MoveRequest request) {
     FileEntity movedFile = fileService.moveFile(id, request.getNewParentId());
     return ResponseEntity.ok(new FileResponse(movedFile));
+  }
+
+  @PutMapping("/folders/{id}/versioning")
+  public ResponseEntity<FileResponse> toggleVersioning(
+      @PathVariable Long id, @Valid @RequestBody VersioningRequest request) {
+    FileEntity updatedFolder = fileService.toggleVersioning(id, request.getEnabled());
+    return ResponseEntity.ok(new FileResponse(updatedFolder));
+  }
+
+  @GetMapping("/{id}/versions")
+  public ResponseEntity<List<FileHistoryResponse>> getFileVersions(@PathVariable Long id) {
+    List<FileHistory> versions = fileService.getFileVersions(id);
+    List<FileHistoryResponse> response =
+        versions.stream().map(FileHistoryResponse::new).collect(Collectors.toList());
+    return ResponseEntity.ok(response);
+  }
+
+  @PostMapping("/{id}/restore/{versionId}")
+  public ResponseEntity<FileResponse> restoreFileVersion(
+      @PathVariable Long id, @PathVariable Long versionId) {
+    FileEntity restoredFile = fileService.restoreFileVersion(id, versionId);
+    return ResponseEntity.ok(new FileResponse(restoredFile));
   }
 }
