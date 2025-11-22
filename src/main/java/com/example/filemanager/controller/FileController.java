@@ -2,6 +2,7 @@ package com.example.filemanager.controller;
 
 import com.example.filemanager.controller.dto.FileResponse;
 import com.example.filemanager.controller.dto.FolderRequest;
+import com.example.filemanager.controller.dto.RenameRequest;
 import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.service.FileService;
 import jakarta.validation.Valid;
@@ -82,6 +83,13 @@ public class FileController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deleteFile(@PathVariable Long id) {
     fileService.softDeleteFile(id);
+  }
+
+  @PutMapping("/{id}/name")
+  public ResponseEntity<FileResponse> renameFile(
+      @PathVariable Long id, @Valid @RequestBody RenameRequest request) {
+    FileEntity updatedFile = fileService.renameFile(id, request.getNewName());
+    return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 
   @GetMapping("/search")
