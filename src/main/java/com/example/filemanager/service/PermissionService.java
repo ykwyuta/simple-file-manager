@@ -9,6 +9,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class PermissionService {
 
+    public boolean canRead(FileEntity fileEntity, User user) {
+        return isAllowed(fileEntity, user, Permission.READ);
+    }
+
     public boolean isAllowed(FileEntity fileEntity, User user, Permission requiredPermission) {
         if (fileEntity.getOwner().getId().equals(user.getId())) {
             return hasPermission(fileEntity.getPermissions() / 100, requiredPermission);

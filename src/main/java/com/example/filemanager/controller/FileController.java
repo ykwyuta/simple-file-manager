@@ -7,12 +7,20 @@ import com.example.filemanager.service.FileService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/files")
@@ -35,5 +43,36 @@ public class FileController {
                 .toUri();
 
         return ResponseEntity.created(location).body(new FileResponse(newDirectory));
+    }
+
+    @PostMapping
+    public ResponseEntity<FileResponse> uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "parentFolderId", required = false) Long parentFolderId,
+            @RequestParam(value = "permissions", defaultValue = "644") String permissions) throws IOException {
+
+        FileEntity newFile = fileService.uploadFile(file, parentFolderId, permissions);
+
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(newFile.getId())
+                .toUri();
+
+        return ResponseEntity.created(location).body(new FileResponse(newFile));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) throws IOException {
+        FileEntity fileEntity = fileService.findFileById(id);
+        byte[] data = fileService.downloadFile(fileEntity);
+        ByteArrayResource resource = new ByteArrayResource(data);
+
+        String encodedFilename = URLEncoder.encode(fileEntity.getName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFilename)
+                .body(resource);
     }
 }

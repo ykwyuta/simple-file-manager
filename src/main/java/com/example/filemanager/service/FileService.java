@@ -5,21 +5,102 @@ import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
 import com.example.filemanager.exception.DuplicateFileException;
+import com.example.filemanager.exception.InvalidPermissionFormatException;
 import com.example.filemanager.exception.ParentNotDirectoryException;
 import com.example.filemanager.exception.ResourceNotFoundException;
 import com.example.filemanager.repository.FileRepository;
+import io.awspring.cloud.s3.S3Template;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.UUID;
 
 @Service
 public class FileService {
 
     private final FileRepository fileRepository;
+    private final S3Template s3Template;
+    private final PermissionService permissionService;
 
-    public FileService(FileRepository fileRepository) {
+    @Value("${S3_BUCKET_NAME}")
+    private String bucketName;
+
+
+    public FileService(FileRepository fileRepository, S3Template s3Template, PermissionService permissionService) {
         this.fileRepository = fileRepository;
+        this.s3Template = s3Template;
+        this.permissionService = permissionService;
     }
+
+    @Transactional
+    public FileEntity uploadFile(MultipartFile file, Long parentFolderId, String permissions) throws IOException {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        FileEntity parent = null;
+        if (parentFolderId != null) {
+            parent = fileRepository.findById(parentFolderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Parent folder not found with id: " + parentFolderId));
+            if (!parent.isDirectory()) {
+                throw new ParentNotDirectoryException("Parent with id " + parentFolderId + " is not a directory.");
+            }
+        }
+
+        fileRepository.findByParentAndName(parent, file.getOriginalFilename())
+                .ifPresent(f -> {
+                    throw new DuplicateFileException("A file or directory with the name '" + file.getOriginalFilename() + "' already exists in this location.");
+                });
+
+        Group group = currentUser.getGroups().stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
+
+        FileEntity newFile = new FileEntity();
+        newFile.setName(file.getOriginalFilename());
+        newFile.setDirectory(false);
+        newFile.setParent(parent);
+        newFile.setOwner(currentUser);
+        newFile.setGroup(group);
+        try {
+            newFile.setPermissions(Integer.parseInt(permissions, 8)); // Parse octal string
+        } catch (NumberFormatException e) {
+            throw new InvalidPermissionFormatException("Invalid permission format. Please use an octal number string (e.g., '755').");
+        }
+
+        String s3Key = UUID.randomUUID() + "/" + file.getOriginalFilename();
+        s3Template.upload(bucketName, s3Key, file.getInputStream());
+        newFile.setStorageKey(s3Key);
+
+        return fileRepository.save(newFile);
+    }
+
+    public byte[] downloadFile(FileEntity fileEntity) throws IOException {
+        if (fileEntity.isDirectory()) {
+            throw new IllegalArgumentException("Cannot download a directory.");
+        }
+        if (fileEntity.getStorageKey() == null) {
+            // This case should ideally not happen for a file, but as a safeguard:
+            throw new IllegalStateException("File entity is missing storage key.");
+        }
+        return s3Template.download(bucketName, fileEntity.getStorageKey()).getInputStream().readAllBytes();
+    }
+
+    @Transactional(readOnly = true)
+    public FileEntity findFileById(Long fileId) {
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        FileEntity fileEntity = fileRepository.findById(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+        if (!permissionService.canRead(fileEntity, currentUser)) {
+            throw new AccessDeniedException("You do not have permission to access this file.");
+        }
+
+        return fileEntity;
+    }
+
 
     @Transactional
     public FileEntity createDirectory(FolderRequest request) {
