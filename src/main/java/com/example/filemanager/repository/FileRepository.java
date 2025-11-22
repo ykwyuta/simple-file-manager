@@ -2,12 +2,13 @@ package com.example.filemanager.repository;
 
 import com.example.filemanager.domain.FileEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
 @Repository
-public interface FileRepository extends JpaRepository<FileEntity, Long> {
+public interface FileRepository extends JpaRepository<FileEntity, Long>, JpaSpecificationExecutor<FileEntity> {
 
     /**
      * Finds a file by its ID, only if it has not been soft-deleted.
