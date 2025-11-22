@@ -5,6 +5,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -26,4 +28,27 @@ public interface FileRepository extends JpaRepository<FileEntity, Long>, JpaSpec
      * @return An Optional containing the FileEntity if found and not deleted, or empty otherwise.
      */
     Optional<FileEntity> findByParentAndNameAndDeletedAtIsNull(FileEntity parent, String name);
+
+    /**
+     * Finds all files that have been soft-deleted.
+     *
+     * @return A list of soft-deleted FileEntity objects.
+     */
+    List<FileEntity> findAllByDeletedAtIsNotNull();
+
+    /**
+     * Finds a file by its ID, only if it has been soft-deleted.
+     *
+     * @param id The ID of the file.
+     * @return An Optional containing the FileEntity if found and deleted, or empty otherwise.
+     */
+    Optional<FileEntity> findByIdAndDeletedAtIsNotNull(Long id);
+
+    /**
+     * Finds all files that were soft-deleted before a specified date.
+     *
+     * @param dateTime The cutoff date and time.
+     * @return A list of FileEntity objects soft-deleted before the given timestamp.
+     */
+    List<FileEntity> findAllByDeletedAtBefore(LocalDateTime dateTime);
 }

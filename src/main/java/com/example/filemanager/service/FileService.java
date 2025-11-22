@@ -274,4 +274,33 @@ public class FileService {
     fileToMove.setParent(destinationFolder);
     return fileRepository.save(fileToMove);
   }
+
+  @Transactional(readOnly = true)
+  public List<FileEntity> listDeletedFiles() {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    List<FileEntity> deletedFiles = fileRepository.findAllByDeletedAtIsNotNull();
+
+    // Filter the list to only include files the user has permission to read
+    return deletedFiles.stream()
+        .filter(file -> permissionService.canRead(file, currentUser))
+        .collect(Collectors.toList());
+  }
+
+  @Transactional
+  public FileEntity restoreFile(Long fileId) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity =
+        fileRepository
+            .findByIdAndDeletedAtIsNotNull(fileId)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("Deleted file not found with id: " + fileId));
+
+    // Check if the user has write permission on the file to restore it
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to restore this file.");
+    }
+
+    fileEntity.setDeletedAt(null);
+    return fileRepository.save(fileEntity);
+  }
 }
