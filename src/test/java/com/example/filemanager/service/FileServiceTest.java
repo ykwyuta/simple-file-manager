@@ -2,10 +2,12 @@ package com.example.filemanager.service;
 
 import com.example.filemanager.controller.dto.FolderRequest;
 import com.example.filemanager.domain.FileEntity;
+import com.example.filemanager.domain.FileHistory;
 import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
 import com.example.filemanager.exception.DuplicateFileException;
 import com.example.filemanager.exception.ResourceNotFoundException;
+import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
 import io.awspring.cloud.s3.S3Resource;
 import io.awspring.cloud.s3.S3Template;
@@ -39,6 +41,8 @@ import static org.mockito.Mockito.mock;
 class FileServiceTest {
 
   @Mock private FileRepository fileRepository;
+
+  @Mock private FileHistoryRepository fileHistoryRepository;
 
   @Mock private S3Template s3Template;
 
@@ -748,5 +752,138 @@ class FileServiceTest {
         org.springframework.security.access.AccessDeniedException.class,
         () -> fileService.restoreFile(fileId));
     verify(fileRepository, never()).save(any());
+  }
+
+  @Test
+  void toggleVersioning_Success() {
+    setupAuthentication();
+    // Given
+    Long folderId = 1L;
+    FileEntity folder = new FileEntity();
+    folder.setId(folderId);
+    folder.setDirectory(true);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(folderId)).thenReturn(Optional.of(folder));
+    when(permissionService.canRead(folder, testUser)).thenReturn(true);
+    when(permissionService.canWrite(folder, testUser)).thenReturn(true);
+    when(fileRepository.save(any(FileEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    FileEntity result = fileService.toggleVersioning(folderId, true);
+
+    // Then
+    assertTrue(result.getVersioningEnabled());
+    verify(fileRepository, times(1)).save(folder);
+  }
+
+  @Test
+  void updateFile_Success_WithVersioning() throws IOException {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    MockMultipartFile file = new MockMultipartFile("file", "update.txt", "text/plain", "updated data".getBytes());
+    FileEntity parent = new FileEntity();
+    parent.setVersioningEnabled(true);
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setParent(parent);
+    fileEntity.setStorageKey("old-key");
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(Collections.emptyList());
+
+    // When
+    fileService.updateFile(fileId, file);
+
+    // Then
+    verify(fileHistoryRepository, times(1)).save(any(FileHistory.class));
+    ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
+    verify(fileRepository, times(1)).save(fileEntityCaptor.capture());
+    assertNotEquals("old-key", fileEntityCaptor.getValue().getStorageKey());
+    assertEquals("update.txt", fileEntityCaptor.getValue().getName());
+  }
+
+  @Test
+  void updateFile_Success_WithoutVersioning() throws IOException {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    MockMultipartFile file = new MockMultipartFile("file", "update.txt", "text/plain", "updated data".getBytes());
+    FileEntity parent = new FileEntity();
+    parent.setVersioningEnabled(false);
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setParent(parent);
+    fileEntity.setStorageKey("old-key");
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
+
+    // When
+    fileService.updateFile(fileId, file);
+
+    // Then
+    verify(fileHistoryRepository, never()).save(any());
+    ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
+    verify(fileRepository, times(1)).save(fileEntityCaptor.capture());
+    assertEquals("old-key", fileEntityCaptor.getValue().getStorageKey());
+  }
+
+  @Test
+  void getFileVersions_Success() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+
+    FileHistory history1 = new FileHistory();
+    history1.setVersion(1);
+    FileHistory history2 = new FileHistory();
+    history2.setVersion(2);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(Arrays.asList(history2, history1));
+
+    // When
+    List<FileHistory> result = fileService.getFileVersions(fileId);
+
+    // Then
+    assertEquals(2, result.size());
+    assertEquals(2, result.get(0).getVersion());
+  }
+
+  @Test
+  void restoreFileVersion_Success() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    Long versionId = 2L;
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setStorageKey("current-key");
+
+    FileHistory historyToRestore = new FileHistory();
+    historyToRestore.setId(versionId);
+    historyToRestore.setStorageKey("restored-key");
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
+    when(fileHistoryRepository.findById(versionId)).thenReturn(Optional.of(historyToRestore));
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(Collections.emptyList());
+
+    // When
+    fileService.restoreFileVersion(fileId, versionId);
+
+    // Then
+    verify(fileHistoryRepository, times(1)).save(any(FileHistory.class));
+    ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
+    verify(fileRepository, times(1)).save(fileEntityCaptor.capture());
+    assertEquals("restored-key", fileEntityCaptor.getValue().getStorageKey());
   }
 }

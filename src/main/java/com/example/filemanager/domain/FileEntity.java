@@ -62,6 +62,9 @@ public class FileEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    @Column(name = "versioning_enabled")
+    private Boolean versioningEnabled;
+
     // Getters and Setters
 
     public Long getId() {
@@ -166,5 +169,13 @@ public class FileEntity {
 
     public void setDeletedAt(LocalDateTime deletedAt) {
         this.deletedAt = deletedAt;
+    }
+
+    public Boolean getVersioningEnabled() {
+        return versioningEnabled;
+    }
+
+    public void setVersioningEnabled(Boolean versioningEnabled) {
+        this.versioningEnabled = versioningEnabled;
     }
 }
