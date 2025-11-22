@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>File Manager</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-cloud"></i> File Manager</h1>
+            <div class="search-bar">
+                <form action="/search" method="get" style="display: flex; gap: 0.5rem;">
+                    <input type="text" name="query" class="form-control" placeholder="Search files...">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
+                </form>
+            </div>
+        </header>
+
+        <div th:if="${message}" class="alert alert-success">
+            <i class="fas fa-check-circle"></i> <span th:text="${message}"></span>
+        </div>
+        <div th:if="${error}" class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i> <span th:text="${error}"></span>
+        </div>
+
+        <div class="actions" style="margin-bottom: 1rem; justify-content: space-between;">
+            <div style="display: flex; gap: 0.5rem;">
+                <button onclick="openModal('uploadModal')" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+                <button onclick="openModal('folderModal')" class="btn btn-secondary">
+                    <i class="fas fa-folder-plus"></i> New Folder
+                </button>
+            </div>
+            <a href="/trash" class="btn btn-danger">
+                <i class="fas fa-trash-alt"></i> Trash
+            </a>
+        </div>
+
+        <div class="breadcrumb">
+            <a href="/"><i class="fas fa-home"></i> Home</a>
+            <span th:if="${currentFolder != null}"> / </span>
+            <!-- Simple breadcrumb for now, ideally recursive -->
+            <span th:if="${currentFolder != null}" th:text="${currentFolder.name}">Folder</span>
+        </div>
+
+        <div class="card">
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Size</th>
+                        <th>Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:if="${parentFolderId != null}">
+                        <td colspan="4">
+                            <a th:href="@{'/?folderId=' + ${parentFolderId}}" class="folder-link">
+                                <i class="fas fa-level-up-alt file-icon"></i> ..
+                            </a>
+                        </td>
+                    </tr>
+                    <tr th:each="file : ${files}">
+                        <td>
+                            <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}" class="folder-link">
+                                <i class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
+                                <span th:text="${file.name}">Folder</span>
+                            </a>
+                            <span th:unless="${file.directory}" class="folder-link" style="cursor: default;">
+                                <i class="fas fa-file file-icon" style="color: #94a3b8;"></i>
+                                <span th:text="${file.name}">File</span>
+                            </span>
+                        </td>
+                        <td>-</td> <!-- Size not in entity yet -->
+                        <td th:text="${#temporals.format(file.updatedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
+                        <td>
+                            <div class="actions">
+                                <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-download"></i>
+                                </a>
+                                <form th:action="@{'/delete/' + ${file.id}}" method="post" onsubmit="return confirm('Are you sure?');" style="display: inline;">
+                                    <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                                    <button type="submit" class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(files)}">
+                        <td colspan="4" style="text-align: center; color: var(--text-secondary);">
+                            No files found.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Upload File</h2>
+            <form action="/upload" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="parentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>Select File</label>
+                    <input type="file" name="file" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Permissions (Octal)</label>
+                    <input type="text" name="permissions" class="form-control" value="644" pattern="[0-7]{3}">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('uploadModal')" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- New Folder Modal -->
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">New Folder</h2>
+            <form action="/folders" method="post">
+                <input type="hidden" name="parentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>Folder Name</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Permissions (Octal)</label>
+                    <input type="text" name="permissions" class="form-control" value="755" pattern="[0-7]{3}">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('folderModal')" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openModal(id) {
+            document.getElementById(id).classList.add('active');
+        }
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.classList.remove('active');
+            }
+        }
+    </script>
+</body>
+</html>

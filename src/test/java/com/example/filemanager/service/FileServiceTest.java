@@ -40,15 +40,20 @@ import static org.mockito.Mockito.mock;
 @ExtendWith(MockitoExtension.class)
 class FileServiceTest {
 
-  @Mock private FileRepository fileRepository;
+  @Mock
+  private FileRepository fileRepository;
 
-  @Mock private FileHistoryRepository fileHistoryRepository;
+  @Mock
+  private FileHistoryRepository fileHistoryRepository;
 
-  @Mock private S3Template s3Template;
+  @Mock
+  private S3Template s3Template;
 
-  @Mock private PermissionService permissionService;
+  @Mock
+  private PermissionService permissionService;
 
-  @InjectMocks private FileService fileService;
+  @InjectMocks
+  private FileService fileService;
 
   private User testUser;
   private Group testGroup;
@@ -177,8 +182,7 @@ class FileServiceTest {
   void uploadFile_Success() throws IOException {
     setupAuthentication();
     // Given
-    MockMultipartFile file =
-        new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
+    MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
     Long parentFolderId = null;
     String permissions = "644";
 
@@ -213,8 +217,7 @@ class FileServiceTest {
   void uploadFile_Failure_ParentNotFound() {
     setupAuthentication();
     // Given
-    MockMultipartFile file =
-        new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
+    MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
     Long parentFolderId = 99L;
     String permissions = "644";
 
@@ -232,8 +235,7 @@ class FileServiceTest {
   void uploadFile_Failure_DuplicateName() {
     setupAuthentication();
     // Given
-    MockMultipartFile file =
-        new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
+    MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
     Long parentFolderId = null;
     String permissions = "644";
 
@@ -260,7 +262,8 @@ class FileServiceTest {
     byte[] fileContent = "test data".getBytes();
     S3Resource s3Resource = mock(S3Resource.class);
 
-    // Note: We no longer need to mock findById for this test as the entity is passed directly.
+    // Note: We no longer need to mock findById for this test as the entity is
+    // passed directly.
     when(s3Template.download("test-bucket", "some-key/test.txt")).thenReturn(s3Resource);
     when(s3Resource.getInputStream()).thenReturn(new ByteArrayInputStream(fileContent));
 
@@ -298,8 +301,7 @@ class FileServiceTest {
   void uploadFile_Failure_InvalidPermissions() {
     setupAuthentication();
     // Given
-    MockMultipartFile file =
-        new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
+    MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
     Long parentFolderId = null;
     String permissions = "invalid"; // Not an octal string
 
@@ -508,7 +510,8 @@ class FileServiceTest {
     when(permissionService.canWrite(fileEntity, testUser)).thenReturn(false);
 
     // When & Then
-    assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> fileService.renameFile(fileId, newName));
+    assertThrows(org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.renameFile(fileId, newName));
     verify(fileRepository, never()).save(any());
   }
 
@@ -557,7 +560,7 @@ class FileServiceTest {
         .thenReturn(Optional.of(destinationFolder));
     when(permissionService.canWrite(destinationFolder, testUser)).thenReturn(true);
     when(fileRepository.findByParentAndNameAndDeletedAtIsNull(
-            destinationFolder, fileToMove.getName()))
+        destinationFolder, fileToMove.getName()))
         .thenReturn(Optional.empty());
     when(fileRepository.save(any(FileEntity.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
@@ -683,8 +686,7 @@ class FileServiceTest {
     deletedFileWithoutPermission.setId(2L);
     deletedFileWithoutPermission.setName("deleted2.txt");
 
-    List<FileEntity> allDeletedFiles =
-        Arrays.asList(deletedFileWithPermission, deletedFileWithoutPermission);
+    List<FileEntity> allDeletedFiles = Arrays.asList(deletedFileWithPermission, deletedFileWithoutPermission);
 
     when(fileRepository.findAllByDeletedAtIsNotNull()).thenReturn(allDeletedFiles);
     when(permissionService.canRead(deletedFileWithPermission, testUser)).thenReturn(true);
@@ -798,11 +800,96 @@ class FileServiceTest {
     fileService.updateFile(fileId, file);
 
     // Then
+    // Then
     verify(fileHistoryRepository, times(1)).save(any(FileHistory.class));
     ArgumentCaptor<FileEntity> fileEntityCaptor = ArgumentCaptor.forClass(FileEntity.class);
     verify(fileRepository, times(1)).save(fileEntityCaptor.capture());
     assertNotEquals("old-key", fileEntityCaptor.getValue().getStorageKey());
     assertEquals("update.txt", fileEntityCaptor.getValue().getName());
+  }
+
+  @Test
+  void listFiles_Success_Root() {
+    setupAuthentication();
+    // Given
+    FileEntity file1 = new FileEntity();
+    file1.setId(1L);
+    file1.setName("file1.txt");
+    file1.setParent(null);
+
+    FileEntity file2 = new FileEntity();
+    file2.setId(2L);
+    file2.setName("file2.txt");
+    file2.setParent(null);
+
+    List<FileEntity> allFiles = Arrays.asList(file1, file2);
+
+    when(fileRepository.findAllByParentAndDeletedAtIsNull(null)).thenReturn(allFiles);
+    when(permissionService.canRead(file1, testUser)).thenReturn(true);
+    when(permissionService.canRead(file2, testUser)).thenReturn(true);
+
+    // When
+    List<FileEntity> result = fileService.listFiles(null);
+
+    // Then
+    assertEquals(2, result.size());
+    verify(fileRepository, times(1)).findAllByParentAndDeletedAtIsNull(null);
+  }
+
+  @Test
+  void listFiles_Success_SubFolder() {
+    setupAuthentication();
+    // Given
+    Long parentId = 10L;
+    FileEntity parent = new FileEntity();
+    parent.setId(parentId);
+    parent.setDirectory(true);
+
+    FileEntity file1 = new FileEntity();
+    file1.setId(1L);
+    file1.setName("file1.txt");
+    file1.setParent(parent);
+
+    List<FileEntity> allFiles = Arrays.asList(file1);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(parentId)).thenReturn(Optional.of(parent));
+    when(permissionService.canRead(parent, testUser)).thenReturn(true);
+    when(fileRepository.findAllByParentAndDeletedAtIsNull(parent)).thenReturn(allFiles);
+    when(permissionService.canRead(file1, testUser)).thenReturn(true);
+
+    // When
+    List<FileEntity> result = fileService.listFiles(parentId);
+
+    // Then
+    assertEquals(1, result.size());
+    verify(fileRepository, times(1)).findAllByParentAndDeletedAtIsNull(parent);
+  }
+
+  @Test
+  void listFiles_Failure_ParentNotFound() {
+    setupAuthentication();
+    // Given
+    Long parentId = 99L;
+    when(fileRepository.findByIdAndDeletedAtIsNull(parentId)).thenReturn(Optional.empty());
+
+    // When & Then
+    assertThrows(ResourceNotFoundException.class, () -> fileService.listFiles(parentId));
+  }
+
+  @Test
+  void listFiles_Failure_NoPermissionOnParent() {
+    setupAuthentication();
+    // Given
+    Long parentId = 10L;
+    FileEntity parent = new FileEntity();
+    parent.setId(parentId);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(parentId)).thenReturn(Optional.of(parent));
+    when(permissionService.canRead(parent, testUser)).thenReturn(false);
+
+    // When & Then
+    assertThrows(org.springframework.security.access.AccessDeniedException.class,
+        () -> fileService.listFiles(parentId));
   }
 
   @Test
@@ -847,7 +934,8 @@ class FileServiceTest {
 
     when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
     when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
-    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(Arrays.asList(history2, history1));
+    when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId))
+        .thenReturn(Arrays.asList(history2, history1));
 
     // When
     List<FileHistory> result = fileService.getFileVersions(fileId);
@@ -1001,7 +1089,6 @@ class FileServiceTest {
     when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(1L)).thenReturn(List.of(v1));
     when(fileRepository.save(any(FileEntity.class))).thenReturn(file);
 
-
     // Action 1: Move the file
     fileService.moveFile(1L, 11L);
 
@@ -1044,7 +1131,6 @@ class FileServiceTest {
     when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(1L)).thenReturn(Collections.emptyList());
     when(fileRepository.save(any(FileEntity.class))).thenReturn(file);
 
-
     // Action 1: Move the file
     fileService.moveFile(1L, 11L);
 
@@ -1080,7 +1166,6 @@ class FileServiceTest {
     when(fileRepository.findByParentAndNameAndDeletedAtIsNull(any(), any())).thenReturn(Optional.empty());
     when(fileRepository.save(any(FileEntity.class))).thenReturn(versionedFolder);
 
-
     // When
     FileEntity result = fileService.moveFile(1L, 2L);
 
@@ -1109,11 +1194,9 @@ class FileServiceTest {
     when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileToRestore));
     when(permissionService.canRead(fileToRestore, testUser)).thenReturn(true);
 
-
     // When
     FileEntity result = fileService.restoreFile(fileId);
     List<FileHistory> history = fileService.getFileVersions(fileId);
-
 
     // Then
     assertNull(result.getDeletedAt());

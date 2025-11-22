@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Trash - File Manager</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-trash-alt"></i> Trash</h1>
+            <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to Home</a>
+        </header>
+
+        <div th:if="${message}" class="alert alert-success">
+            <i class="fas fa-check-circle"></i> <span th:text="${message}"></span>
+        </div>
+        <div th:if="${error}" class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i> <span th:text="${error}"></span>
+        </div>
+
+        <div class="card">
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Deleted At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="file : ${files}">
+                        <td>
+                            <i th:if="${file.directory}" class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
+                            <i th:unless="${file.directory}" class="fas fa-file file-icon" style="color: #94a3b8;"></i>
+                            <span th:text="${file.name}">File</span>
+                        </td>
+                        <td th:text="${#temporals.format(file.deletedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
+                        <td>
+                            <form th:action="@{'/restore/' + ${file.id}}" method="post" style="display: inline;">
+                                <button type="submit" class="btn btn-primary"
+                                    style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-trash-restore"></i> Restore
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(files)}">
+                        <td colspan="3" style="text-align: center; color: var(--text-secondary);">
+                            Trash is empty.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+
+</html>

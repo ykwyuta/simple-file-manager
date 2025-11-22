@@ -61,11 +61,10 @@ public class FileService {
 
     FileEntity parent = null;
     if (parentFolderId != null) {
-      parent =
-          fileRepository
-              .findByIdAndDeletedAtIsNull(parentFolderId)
-              .orElseThrow(
-                  () -> new ResourceNotFoundException("Parent folder not found with id: " + parentFolderId));
+      parent = fileRepository
+          .findByIdAndDeletedAtIsNull(parentFolderId)
+          .orElseThrow(
+              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentFolderId));
       if (!parent.isDirectory()) {
         throw new ParentNotDirectoryException(
             "Parent with id " + parentFolderId + " is not a directory.");
@@ -82,12 +81,11 @@ public class FileService {
                       + "' already exists in this location.");
             });
 
-    Group group =
-        currentUser
-            .getGroups()
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
+    Group group = currentUser
+        .getGroups()
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
 
     FileEntity newFile = new FileEntity();
     newFile.setName(file.getOriginalFilename());
@@ -128,13 +126,12 @@ public class FileService {
     // Check if versioning is enabled on the parent folder
     if (parent != null && parent.getVersioningEnabled() != null && parent.getVersioningEnabled()) {
       // Versioning is enabled, create a history record
-      int latestVersion =
-          fileHistoryRepository
-              .findByFileEntityIdOrderByVersionDesc(fileId)
-              .stream()
-              .findFirst()
-              .map(FileHistory::getVersion)
-              .orElse(0);
+      int latestVersion = fileHistoryRepository
+          .findByFileEntityIdOrderByVersionDesc(fileId)
+          .stream()
+          .findFirst()
+          .map(FileHistory::getVersion)
+          .orElse(0);
 
       FileHistory history = new FileHistory();
       history.setFileEntity(fileEntity);
@@ -171,10 +168,9 @@ public class FileService {
   @Transactional(readOnly = true)
   public FileEntity findFileById(Long fileId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    FileEntity fileEntity =
-        fileRepository
-            .findByIdAndDeletedAtIsNull(fileId)
-            .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
     if (!permissionService.canRead(fileEntity, currentUser)) {
       throw new AccessDeniedException("You do not have permission to access this file.");
@@ -183,19 +179,37 @@ public class FileService {
     return fileEntity;
   }
 
+  @Transactional(readOnly = true)
+  public List<FileEntity> listFiles(Long parentId) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity parent = null;
+    if (parentId != null) {
+      parent = fileRepository
+          .findByIdAndDeletedAtIsNull(parentId)
+          .orElseThrow(
+              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentId));
+      if (!permissionService.canRead(parent, currentUser)) {
+        throw new AccessDeniedException("You do not have permission to access this folder.");
+      }
+    }
+
+    List<FileEntity> files = fileRepository.findAllByParentAndDeletedAtIsNull(parent);
+    return files.stream()
+        .filter(file -> permissionService.canRead(file, currentUser))
+        .collect(Collectors.toList());
+  }
+
   @Transactional
   public FileEntity createDirectory(FolderRequest request) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
     FileEntity parent = null;
     if (request.getParentFolderId() != null) {
-      parent =
-          fileRepository
-              .findByIdAndDeletedAtIsNull(request.getParentFolderId())
-              .orElseThrow(
-                  () ->
-                      new ResourceNotFoundException(
-                          "Parent folder not found with id: " + request.getParentFolderId()));
+      parent = fileRepository
+          .findByIdAndDeletedAtIsNull(request.getParentFolderId())
+          .orElseThrow(
+              () -> new ResourceNotFoundException(
+                  "Parent folder not found with id: " + request.getParentFolderId()));
       if (!parent.isDirectory()) {
         throw new ParentNotDirectoryException(
             "Parent with id " + request.getParentFolderId() + " is not a directory.");
@@ -214,12 +228,11 @@ public class FileService {
 
     // The primary group of the user is used as the folder's group.
     // A more sophisticated implementation might allow selecting a group.
-    Group group =
-        currentUser
-            .getGroups()
-            .stream()
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
+    Group group = currentUser
+        .getGroups()
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
 
     FileEntity newDirectory = new FileEntity();
     newDirectory.setName(request.getName());
@@ -235,10 +248,9 @@ public class FileService {
   @Transactional
   public void softDeleteFile(Long fileId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    FileEntity fileEntity =
-        fileRepository
-            .findByIdAndDeletedAtIsNull(fileId)
-            .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
       throw new AccessDeniedException("You do not have permission to delete this file.");
@@ -253,10 +265,9 @@ public class FileService {
   @Transactional
   public FileEntity renameFile(Long fileId, String newName) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    FileEntity fileEntity =
-        fileRepository
-            .findByIdAndDeletedAtIsNull(fileId)
-            .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
       throw new AccessDeniedException("You do not have permission to rename this file.");
@@ -300,10 +311,9 @@ public class FileService {
   @Transactional
   public FileEntity moveFile(Long fileId, Long newParentId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    FileEntity fileToMove =
-        fileRepository
-            .findByIdAndDeletedAtIsNull(fileId)
-            .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+    FileEntity fileToMove = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
     if (!permissionService.canWrite(fileToMove, currentUser)) {
       throw new AccessDeniedException("You do not have permission to move this file.");
@@ -311,11 +321,10 @@ public class FileService {
 
     checkFileLock(fileToMove, currentUser);
 
-    FileEntity destinationFolder =
-        fileRepository
-            .findByIdAndDeletedAtIsNull(newParentId)
-            .orElseThrow(
-                () -> new ResourceNotFoundException("Destination folder not found with id: " + newParentId));
+    FileEntity destinationFolder = fileRepository
+        .findByIdAndDeletedAtIsNull(newParentId)
+        .orElseThrow(
+            () -> new ResourceNotFoundException("Destination folder not found with id: " + newParentId));
 
     if (!destinationFolder.isDirectory()) {
       throw new ParentNotDirectoryException(
@@ -355,11 +364,10 @@ public class FileService {
   @Transactional
   public FileEntity restoreFile(Long fileId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    FileEntity fileEntity =
-        fileRepository
-            .findByIdAndDeletedAtIsNotNull(fileId)
-            .orElseThrow(
-                () -> new ResourceNotFoundException("Deleted file not found with id: " + fileId));
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNotNull(fileId)
+        .orElseThrow(
+            () -> new ResourceNotFoundException("Deleted file not found with id: " + fileId));
 
     // Check if the user has write permission on the file to restore it
     if (!permissionService.canWrite(fileEntity, currentUser)) {
@@ -408,20 +416,18 @@ public class FileService {
       throw new AccessDeniedException("You do not have permission to write to this file.");
     }
 
-    FileHistory history =
-        fileHistoryRepository
-            .findById(versionId)
-            .orElseThrow(
-                () -> new ResourceNotFoundException("File version not found with id: " + versionId));
+    FileHistory history = fileHistoryRepository
+        .findById(versionId)
+        .orElseThrow(
+            () -> new ResourceNotFoundException("File version not found with id: " + versionId));
 
     // Create a new history entry for the current state before restoring
-    int latestVersion =
-        fileHistoryRepository
-            .findByFileEntityIdOrderByVersionDesc(fileId)
-            .stream()
-            .findFirst()
-            .map(FileHistory::getVersion)
-            .orElse(0);
+    int latestVersion = fileHistoryRepository
+        .findByFileEntityIdOrderByVersionDesc(fileId)
+        .stream()
+        .findFirst()
+        .map(FileHistory::getVersion)
+        .orElse(0);
 
     FileHistory currentVersionHistory = new FileHistory();
     currentVersionHistory.setFileEntity(fileEntity);
@@ -437,50 +443,51 @@ public class FileService {
 
   @Transactional
   public void updateLockStatus(Long fileId, boolean lock, String username) {
-      User currentUser = userRepository.findByUsername(username)
-              .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
-      FileEntity fileEntity = findFileById(fileId);
+    User currentUser = userRepository.findByUsername(username)
+        .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+    FileEntity fileEntity = findFileById(fileId);
 
-      if (fileEntity.isDirectory()) {
-          throw new IllegalArgumentException("Cannot lock a directory.");
+    if (fileEntity.isDirectory()) {
+      throw new IllegalArgumentException("Cannot lock a directory.");
+    }
+
+    FileEntity parent = fileEntity.getParent();
+    if (parent == null || parent.getVersioningEnabled() == null || !parent.getVersioningEnabled()) {
+      throw new IllegalStateException("File lock can only be used for files in a version-controlled folder.");
+    }
+
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to change the lock status of this file.");
+    }
+
+    if (lock) {
+      if (fileEntity.isLocked() && !fileEntity.getLockedBy().equals(currentUser)) {
+        throw new FileLockedException("File is already locked by another user.");
       }
-
-      FileEntity parent = fileEntity.getParent();
-      if (parent == null || parent.getVersioningEnabled() == null || !parent.getVersioningEnabled()) {
-          throw new IllegalStateException("File lock can only be used for files in a version-controlled folder.");
+      fileEntity.setLocked(true);
+      fileEntity.setLockedBy(currentUser);
+      fileEntity.setLockedAt(LocalDateTime.now());
+    } else {
+      if (!fileEntity.isLocked()) {
+        // Optionally, handle the case where an unlock is attempted on an already
+        // unlocked file.
+        // For now, we'll just let it proceed silently.
+        return;
       }
-
-      if (!permissionService.canWrite(fileEntity, currentUser)) {
-          throw new AccessDeniedException("You do not have permission to change the lock status of this file.");
+      if (!fileEntity.getLockedBy().equals(currentUser)) {
+        throw new AccessDeniedException("You cannot unlock a file locked by another user.");
       }
+      fileEntity.setLocked(false);
+      fileEntity.setLockedBy(null);
+      fileEntity.setLockedAt(null);
+    }
 
-      if (lock) {
-          if (fileEntity.isLocked() && !fileEntity.getLockedBy().equals(currentUser)) {
-              throw new FileLockedException("File is already locked by another user.");
-          }
-          fileEntity.setLocked(true);
-          fileEntity.setLockedBy(currentUser);
-          fileEntity.setLockedAt(LocalDateTime.now());
-      } else {
-          if (!fileEntity.isLocked()) {
-              // Optionally, handle the case where an unlock is attempted on an already unlocked file.
-              // For now, we'll just let it proceed silently.
-              return;
-          }
-          if (!fileEntity.getLockedBy().equals(currentUser)) {
-              throw new AccessDeniedException("You cannot unlock a file locked by another user.");
-          }
-          fileEntity.setLocked(false);
-          fileEntity.setLockedBy(null);
-          fileEntity.setLockedAt(null);
-      }
-
-      fileRepository.save(fileEntity);
+    fileRepository.save(fileEntity);
   }
 
   private void checkFileLock(FileEntity fileEntity, User currentUser) {
     if (fileEntity.isLocked() && (fileEntity.getLockedBy() == null || !fileEntity.getLockedBy().equals(currentUser))) {
-        throw new FileLockedException("File is locked by another user and cannot be modified.");
+      throw new FileLockedException("File is locked by another user and cannot be modified.");
     }
   }
 }
