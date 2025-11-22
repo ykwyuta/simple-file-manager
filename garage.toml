@@ -16,7 +16,7 @@ rpc_bind_addr = "[::]:3901"
 # The public address must be connectable from other containers
 rpc_public_addr = "garage:3901"
 # IMPORTANT: Replace with a real secret in production (e.g., openssl rand -hex 32)
-rpc_secret = "CHANGE_ME_IN_PRODUCTION_WITH_A_64_CHAR_HEX_STRING"
+rpc_secret = "0000000000000000000000000000000000000000000000000000000000000000"
 
 # S3 API endpoint configuration
 [s3_api]
