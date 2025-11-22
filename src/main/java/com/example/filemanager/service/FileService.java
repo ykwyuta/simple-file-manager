@@ -188,6 +188,32 @@ public class FileService {
     fileRepository.save(fileEntity);
   }
 
+  @Transactional
+  public FileEntity renameFile(Long fileId, String newName) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity =
+        fileRepository
+            .findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to rename this file.");
+    }
+
+    fileRepository
+        .findByParentAndNameAndDeletedAtIsNull(fileEntity.getParent(), newName)
+        .ifPresent(
+            f -> {
+              throw new DuplicateFileException(
+                  "A file or directory with the name '"
+                      + newName
+                      + "' already exists in this location.");
+            });
+
+    fileEntity.setName(newName);
+    return fileRepository.save(fileEntity);
+  }
+
   @Transactional(readOnly = true)
   public List<FileEntity> searchFiles(String name, String tags) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();

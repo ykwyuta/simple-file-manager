@@ -452,4 +452,82 @@ class FileServiceTest {
     // Then
     assertTrue(results.isEmpty());
   }
+
+  @Test
+  void renameFile_Success() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    String newName = "renamed-document.txt";
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setName("original-document.txt");
+    fileEntity.setParent(null);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(null, newName)).thenReturn(Optional.empty());
+    when(fileRepository.save(any(FileEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    // When
+    FileEntity result = fileService.renameFile(fileId, newName);
+
+    // Then
+    assertNotNull(result);
+    assertEquals(newName, result.getName());
+    verify(fileRepository, times(1)).save(fileEntity);
+  }
+
+  @Test
+  void renameFile_Failure_NotFound() {
+    setupAuthentication();
+    // Given
+    Long fileId = 99L;
+    String newName = "new-name.txt";
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.empty());
+
+    // When & Then
+    assertThrows(ResourceNotFoundException.class, () -> fileService.renameFile(fileId, newName));
+    verify(fileRepository, never()).save(any());
+  }
+
+  @Test
+  void renameFile_Failure_NoPermission() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    String newName = "new-name.txt";
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(false);
+
+    // When & Then
+    assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> fileService.renameFile(fileId, newName));
+    verify(fileRepository, never()).save(any());
+  }
+
+  @Test
+  void renameFile_Failure_DuplicateName() {
+    setupAuthentication();
+    // Given
+    Long fileId = 1L;
+    String newName = "existing-name.txt";
+    FileEntity fileEntity = new FileEntity();
+    fileEntity.setId(fileId);
+    fileEntity.setParent(null);
+
+    FileEntity existingFile = new FileEntity();
+    existingFile.setId(2L);
+    existingFile.setName(newName);
+
+    when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
+    when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
+    when(fileRepository.findByParentAndNameAndDeletedAtIsNull(null, newName)).thenReturn(Optional.of(existingFile));
+
+    // When & Then
+    assertThrows(DuplicateFileException.class, () -> fileService.renameFile(fileId, newName));
+    verify(fileRepository, never()).save(any());
+  }
 }
