@@ -2,6 +2,7 @@ package com.example.filemanager.controller;
 
 import com.example.filemanager.controller.dto.FileResponse;
 import com.example.filemanager.controller.dto.FolderRequest;
+import com.example.filemanager.controller.dto.MoveRequest;
 import com.example.filemanager.controller.dto.RenameRequest;
 import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.service.FileService;
@@ -100,5 +101,12 @@ public class FileController {
     List<FileResponse> response =
         files.stream().map(FileResponse::new).collect(Collectors.toList());
     return ResponseEntity.ok(response);
+  }
+
+  @PutMapping("/{id}/parent")
+  public ResponseEntity<FileResponse> moveFile(
+      @PathVariable Long id, @Valid @RequestBody MoveRequest request) {
+    FileEntity movedFile = fileService.moveFile(id, request.getNewParentId());
+    return ResponseEntity.ok(new FileResponse(movedFile));
   }
 }

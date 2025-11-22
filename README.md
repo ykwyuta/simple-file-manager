@@ -217,8 +217,7 @@ volumes:
         -   フォルダ作成API (`POST /api/files/folders`) を実装しました。
         -   今後、階層構造の表示やナビゲーション機能の実装が必要です。
     2.  **ファイル/フォルダ操作 (No. 2.1)**: ✅ **一部実装済み**
-        -   S3連携を実装し、ファイルの**アップロード**と**ダウンロード**、**論理削除**、**リネーム**機能（`POST /api/files`, `GET /api/files/{id}`, `DELETE /api/files/{id}`, `PUT /api/files/{id}/name`）を実装しました。
-        -   今後、移動の機能の実装が必要です。
+        -   S3連携を実装し、ファイルの**アップロード**と**ダウンロード**、**論理削除**、**リネーム**、**移動**機能（`POST /api/files`, `GET /api/files/{id}`, `DELETE /api/files/{id}`, `PUT /api/files/{id}/name`, `PUT /api/files/{id}/parent`）を実装しました。
 
 3.  **フェーズ3: 付加価値機能の実装**
     1.  **ファイル検索 (No. 2.3)**: ✅ **実装済み**
