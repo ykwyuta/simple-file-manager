@@ -22,7 +22,7 @@ Spring Boot、JPA、Thymeleafを用いて、**ユーザーグループ**と**ユ
 | **画面** | Thymeleaf | サーバーサイドテンプレートエンジン |
 | **O/Rマッピング** | Spring Data JPA (Hibernate) | データ永続化 |
 | **データベース** | H2 Database | 開発環境でPostgreSQL互換モードで使用 |
-| **外部ストレージ** | S3互換ストレージ (MinIOを想定) | ファイル本体の保存 |
+| **外部ストレージ** | S3互換ストレージ (Garage) | ファイル本体の保存 |
 | **コンテナ化** | Docker, Docker Compose | 環境構築の自動化 |
 
 ### 4\. 🔒 権限管理の詳細仕様
@@ -68,11 +68,60 @@ Spring Boot、JPA、Thymeleafを用いて、**ユーザーグループ**と**ユ
     1.  S3互換ストレージから**ファイル本体を物理削除**する。
     2.  DBから**メタデータレコードを物理削除**する。
 
-### 7\. ☁️ S3互換ストレージ連携
+### 7\. ☁️ S3互換ストレージ連携 (Garage)
 
-  * **ファイル保存**: ファイルアップロード時、ファイル本体はS3互換サービス（例: MinIO）に保存され、その一意のキー（`storage_key`）のみがDBに保存されます。
+  * **ファイル保存**: ファイルアップロード時、ファイル本体はS3互換サービス（Garage）に保存され、その一意のキー（`storage_key`）のみがDBに保存されます。
   * **ファイル取得**: ファイルダウンロード時、DBの`storage_key`を用いてS3互換サービスからファイルを取得し、ユーザーに提供します。
-  * **利用ライブラリ**: Spring Cloud AWS S3またはMinIOクライアントライブラリを使用します。
+  * **利用ライブラリ**: `io.awspring.cloud:spring-cloud-aws-starter-s3` を使用します。
+
+### 7.1. 🚀 初回セットアップ (Garage)
+
+Garageは初回起動時に、クラスタの初期化、バケットの作成、およびアクセスキーの生成が必要です。
+
+1.  **Docker Composeの起動**: プロジェクトルートで以下のコマンドを実行し、全てのコンテナを起動します。
+    ```bash
+    docker compose up --build -d
+    ```
+
+2.  **Garageクラスタの初期化**: 以下のコマンドを実行して、Garageノードの状態を確認し、クラスタレイアウトを定義します。
+    ```bash
+    # ノードIDを取得
+    NODE_ID=$(docker compose exec garage /garage status | grep -o '^[a-f0-9]*')
+    # レイアウトを割り当て (dev環境なので容量は1Gに設定)
+    docker compose exec garage /garage layout assign -z dev -c 1G $NODE_ID
+    # レイアウトを適用
+    docker compose exec garage /garage layout apply --version 1
+    ```
+
+3.  **バケットの作成**: `files` という名前のバケットを作成します。
+    ```bash
+    docker compose exec garage /garage bucket create files
+    ```
+
+4.  **アクセスキーの生成**: アプリケーションがS3 APIに接続するためのキーを生成します。
+    ```bash
+    docker compose exec garage /garage key new --name app-key
+    ```
+    実行すると、以下のように `Access Key` と `Secret Access Key` が表示されます。**これらの値を必ず控えてください。**
+    ```
+    Access Key: JNDNLongAccessKeyString...
+    Secret Access Key: SuperSecretKeyString...
+    ```
+
+5.  **バケット権限の付与**: 生成したキーに `files` バケットへの読み書き権限を付与します。
+    ```bash
+    docker compose exec garage /garage bucket allow --read --write --owner files --key app-key
+    ```
+
+6.  **`docker-compose.yml` の更新**:
+    *   `docker-compose.yml` ファイルを開きます。
+    *   `app` サービスの `environment` セクションにある `S3_ACCESS_KEY` と `S3_SECRET_KEY` の値を、ステップ4で生成されたキーに書き換えます。
+    *   ファイルを保存し、以下のコマンドでアプリケーションコンテナを再起動して変更を適用します。
+        ```bash
+        docker compose up -d --no-deps app
+        ```
+
+これで、アプリケーションがGarageに接続できるようになります。
 
 ### 8\. 🐳 Docker Compose ファイル構成案
 
@@ -83,7 +132,7 @@ version: '3.8'
 services:
   # 1. PostgreSQL (H2互換DB)
   db:
-    image: postgres:14-alpine
+    image: postgres:17-alpine
     container_name: file-manager-db
     environment:
       POSTGRES_USER: user
@@ -99,19 +148,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. S3互換ストレージ (MinIO)
-  minio:
-    image: minio/minio
-    container_name: file-manager-minio
+  # 2. S3互換ストレージ (Garage)
+  garage:
+    image: dxflrs/garage:v2.1.0
+    container_name: file-manager-garage
     ports:
-      - "9000:9000"
-      - "9001:9001" # Web UI
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
+      - "3900:3900"  # S3 API
+      - "3903:3903"  # Admin API
     volumes:
-      - minio_data:/data
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
 
   # 3. Spring Bootアプリケーション
   app:
@@ -121,20 +168,21 @@ services:
       - "8080:8080"
     depends_on:
       - db
-      - minio
+      - garage
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/filemanager_db
       SPRING_DATASOURCE_USERNAME: user
       SPRING_DATASOURCE_PASSWORD: password
-      # MinIO接続設定
-      S3_ENDPOINT_URL: http://minio:9000
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
+      # Garage S3接続設定 (初回セットアップ後に要更新)
+      S3_ENDPOINT_URL: http://garage:3900
+      S3_ACCESS_KEY: GENERATED_ACCESS_KEY
+      S3_SECRET_KEY: GENERATED_SECRET_KEY
       S3_BUCKET_NAME: files
 
 volumes:
   postgres_data:
-  minio_data:
+  garage_meta:
+  garage_data:
 ```
 
 -----

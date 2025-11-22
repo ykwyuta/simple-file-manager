@@ -1,0 +1,32 @@
+# Basic Garage configuration for a single-node development setup
+
+# Location of metadata and data files inside the container
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+
+# Use a simple database engine suitable for development
+db_engine = "sqlite"
+
+# Disable replication for a single-node setup
+replication_factor = 1
+compression_level = 1
+
+# Network configuration for services inside Docker Compose
+rpc_bind_addr = "[::]:3901"
+# The public address must be connectable from other containers
+rpc_public_addr = "garage:3901"
+# IMPORTANT: Replace with a real secret in production (e.g., openssl rand -hex 32)
+rpc_secret = "CHANGE_ME_IN_PRODUCTION_WITH_A_64_CHAR_HEX_STRING"
+
+# S3 API endpoint configuration
+[s3_api]
+s3_region = "us-east-1" # Using a standard region name
+api_bind_addr = "[::]:3900"
+
+# Admin API configuration
+[admin]
+api_bind_addr = "[::]:3903"
+# IMPORTANT: Replace with a secure token in production
+admin_token = "CHANGE_ME_IN_PRODUCTION"
+# IMPORTANT: Replace with a secure token in production
+metrics_token = "CHANGE_ME_IN_PRODUCTION"
