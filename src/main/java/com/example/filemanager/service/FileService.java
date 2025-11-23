@@ -17,10 +17,14 @@ import com.example.filemanager.repository.UserRepository;
 import io.awspring.cloud.s3.S3Template;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -204,6 +208,30 @@ public class FileService {
     return files.stream()
         .filter(file -> permissionService.canRead(file, currentUser))
         .collect(Collectors.toList());
+  }
+
+  @Transactional(readOnly = true)
+  public Page<FileEntity> listFiles(Long parentId, Pageable pageable) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity parent = null;
+    if (parentId != null) {
+      parent = fileRepository
+          .findByIdAndDeletedAtIsNull(parentId)
+          .orElseThrow(
+              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentId));
+      if (!permissionService.canRead(parent, currentUser)) {
+        throw new AccessDeniedException("You do not have permission to access this folder.");
+      }
+    }
+
+    Page<FileEntity> filesPage = fileRepository.findAllByParentAndDeletedAtIsNull(parent, pageable);
+
+    // Filter files based on read permission
+    List<FileEntity> filteredFiles = filesPage.getContent().stream()
+        .filter(file -> permissionService.canRead(file, currentUser))
+        .collect(Collectors.toList());
+
+    return new PageImpl<>(filteredFiles, pageable, filesPage.getTotalElements());
   }
 
   @Transactional
@@ -525,6 +553,23 @@ public class FileService {
     }
 
     return fileRepository.save(fileEntity);
+  }
+
+  @Transactional(readOnly = true)
+  public List<FileEntity> getBreadcrumbs(Long folderId) {
+    if (folderId == null) {
+      return new ArrayList<>();
+    }
+    // findFileById checks for read permission on the folder itself
+    FileEntity folder = findFileById(folderId);
+
+    List<FileEntity> breadcrumbs = new ArrayList<>();
+    FileEntity current = folder;
+    while (current != null) {
+      breadcrumbs.add(0, current);
+      current = current.getParent();
+    }
+    return breadcrumbs;
   }
 
   private void checkFileLock(FileEntity fileEntity, User currentUser) {

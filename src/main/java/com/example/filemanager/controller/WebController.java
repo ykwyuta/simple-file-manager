@@ -6,16 +6,25 @@ import com.example.filemanager.domain.User;
 import com.example.filemanager.service.FileService;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import com.example.filemanager.exception.DuplicateFileException;
+import com.example.filemanager.exception.FileLockedException;
+import com.example.filemanager.exception.InvalidPermissionFormatException;
+import com.example.filemanager.exception.ParentNotDirectoryException;
+import com.example.filemanager.exception.ResourceNotFoundException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Controller
 public class WebController {
@@ -29,16 +38,25 @@ public class WebController {
     @GetMapping("/")
     public String index(
             @RequestParam(required = false) Long folderId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal User currentUser,
             Model model) {
-        List<FileEntity> files = fileService.listFiles(folderId);
-        model.addAttribute("files", files);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<FileEntity> filesPage = fileService.listFiles(folderId, pageable);
+
+        model.addAttribute("files", filesPage.getContent());
+        model.addAttribute("currentPage", page);
+        model.addAttribute("totalPages", filesPage.getTotalPages());
+        model.addAttribute("totalItems", filesPage.getTotalElements());
+        model.addAttribute("pageSize", size);
         model.addAttribute("currentFolderId", folderId);
         model.addAttribute("currentUser", currentUser);
 
         if (folderId != null) {
             FileEntity currentFolder = fileService.findFileById(folderId);
             model.addAttribute("currentFolder", currentFolder);
+            model.addAttribute("breadcrumbs", fileService.getBreadcrumbs(folderId));
             if (currentFolder.getParent() != null) {
                 model.addAttribute("parentFolderId", currentFolder.getParent().getId());
             }
@@ -59,6 +77,12 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to this folder.");
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate file: " + e.getMessage());
+        } catch (InvalidPermissionFormatException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid permissions: " + e.getMessage());
+        } catch (ParentNotDirectoryException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid parent folder: " + e.getMessage());
         } catch (IOException e) {
             redirectAttributes.addFlashAttribute("error", "Failed to upload file: " + e.getMessage());
         } catch (Exception e) {
@@ -80,8 +104,14 @@ public class WebController {
             request.setPermissions(permissions);
             fileService.createDirectory(request);
             redirectAttributes.addFlashAttribute("message", "Folder created successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate folder: " + e.getMessage());
+        } catch (InvalidPermissionFormatException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid permissions: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to create folder: " + e.getMessage());
         }
         return "redirect:/" + (parentFolderId != null ? "?folderId=" + parentFolderId : "");
     }
@@ -97,6 +127,10 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to delete this file.");
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot delete: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to delete: " + e.getMessage());
         }
@@ -115,8 +149,12 @@ public class WebController {
         try {
             fileService.restoreFile(id);
             redirectAttributes.addFlashAttribute("message", "File restored successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to restore: " + e.getMessage());
         }
         return "redirect:/trash";
     }
@@ -145,6 +183,12 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to rename this file.");
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate name: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot rename: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Rename failed: " + e.getMessage());
         }
@@ -163,8 +207,12 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to this folder.");
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "Folder not found: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid operation: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to toggle versioning: " + e.getMessage());
         }
         return "redirect:/?folderId=" + id;
     }
@@ -195,9 +243,94 @@ public class WebController {
             redirectAttributes.addFlashAttribute("message", "Permissions changed successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: Only the owner can change permissions.");
+        } catch (InvalidPermissionFormatException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid permissions: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to change permissions: " + e.getMessage());
         }
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
     }
+
+    @PostMapping("/move/{id}")
+    public String moveFile(
+            @PathVariable Long id,
+            @RequestParam("destinationFolderId") Long destinationFolderId,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.moveFile(id, destinationFolderId);
+            redirectAttributes.addFlashAttribute("message", "File moved successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate file in destination: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot move: " + e.getMessage());
+        } catch (ParentNotDirectoryException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid destination: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File or folder not found: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to move: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @PostMapping("/files/{id}/lock")
+    public String toggleLock(
+            @PathVariable Long id,
+            @RequestParam("locked") boolean locked,
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.updateLockStatus(id, locked, currentUser.getUsername());
+            String status = locked ? "locked" : "unlocked";
+            redirectAttributes.addFlashAttribute("message", "File " + status + " successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Lock error: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to update lock status: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @GetMapping("/api/folders")
+    @ResponseBody
+    public List<Map<String, Object>> getFolders() {
+        List<FileEntity> allFiles = fileService.listFiles(null);
+        return getAllFoldersRecursive(allFiles);
+    }
+
+    private List<Map<String, Object>> getAllFoldersRecursive(List<FileEntity> files) {
+        List<Map<String, Object>> folders = new ArrayList<>();
+        for (FileEntity file : files) {
+            if (file.isDirectory()) {
+                Map<String, Object> folderInfo = new HashMap<>();
+                folderInfo.put("id", file.getId());
+                folderInfo.put("name", file.getName());
+                folderInfo.put("path", getFullPath(file));
+                folders.add(folderInfo);
+
+                // Get subfolders
+                List<FileEntity> subFiles = fileService.listFiles(file.getId());
+                folders.addAll(getAllFoldersRecursive(subFiles));
+            }
+        }
+        return folders;
+    }
+
+    private String getFullPath(FileEntity file) {
+        if (file.getParent() == null) {
+            return "/" + file.getName();
+        }
+        return getFullPath(file.getParent()) + "/" + file.getName();
+    }
+
 }
