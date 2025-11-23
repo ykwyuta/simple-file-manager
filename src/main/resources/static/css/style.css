@@ -38,6 +38,7 @@ h1 {
     font-size: 2rem;
     font-weight: 700;
     background: linear-gradient(to right, var(--accent-color), #818cf8);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
@@ -233,4 +234,47 @@ h1 {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1.5rem;
+}
+
+/* Version history modal specific styles */
+#versionHistoryContent .file-list {
+    font-size: 0.9rem;
+}
+
+#versionHistoryContent .file-list th,
+#versionHistoryContent .file-list td {
+    padding: 0.75rem;
+}
+
+/* Permission and owner badges */
+.owner-badge {
+    background-color: rgba(56, 189, 248, 0.2);
+    color: var(--accent-color);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 500;
+    border: 1px solid var(--accent-color);
+}
+
+.permission-badge {
+    background-color: var(--bg-color);
+    color: var(--success-color);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    cursor: help;
+}
+
+.permission-editable {
+    cursor: pointer !important;
+    transition: all 0.2s;
+}
+
+.permission-editable:hover {
+    background-color: var(--accent-color);
+    color: var(--bg-color);
+    border-color: var(--accent-color);
+    transform: scale(1.05);
 }

@@ -12,7 +12,7 @@ public class FolderRequest {
     private Long parentFolderId; // Nullable for root folder
 
     @NotNull(message = "Permissions cannot be null")
-    @Pattern(regexp = "^[0-7]{3}$", message = "Permissions must be a 3-digit octal number (e.g., 755)")
+    @Pattern(regexp = "^[0-7]{3}$", message = "Permissions must be a 3-digit number with each digit 0-7 (e.g., 755)")
     private String permissions;
 
     // Getters and Setters

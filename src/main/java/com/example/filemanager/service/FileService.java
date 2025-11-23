@@ -94,10 +94,17 @@ public class FileService {
     newFile.setOwner(currentUser);
     newFile.setGroup(group);
     try {
-      newFile.setPermissions(Integer.parseInt(permissions, 8)); // Parse octal string
+      // Store permissions as decimal integer (e.g., 755, 644)
+      int perm = Integer.parseInt(permissions);
+      // Validate each digit is 0-7
+      if (perm < 0 || perm > 777 || !permissions.matches("[0-7]{3}")) {
+        throw new InvalidPermissionFormatException(
+            "Invalid permission format. Each digit must be 0-7 (e.g., '755').");
+      }
+      newFile.setPermissions(perm);
     } catch (NumberFormatException e) {
       throw new InvalidPermissionFormatException(
-          "Invalid permission format. Please use an octal number string (e.g., '755').");
+          "Invalid permission format. Please use a 3-digit number (e.g., '755').");
     }
 
     String s3Key = UUID.randomUUID() + "/" + file.getOriginalFilename();
@@ -240,7 +247,14 @@ public class FileService {
     newDirectory.setParent(parent);
     newDirectory.setOwner(currentUser);
     newDirectory.setGroup(group);
-    newDirectory.setPermissions(Integer.parseInt(request.getPermissions(), 8)); // Parse octal string
+
+    // Store permissions as decimal integer (e.g., 755, 644)
+    int perm = Integer.parseInt(request.getPermissions());
+    if (perm < 0 || perm > 777 || !request.getPermissions().matches("[0-7]{3}")) {
+      throw new InvalidPermissionFormatException(
+          "Invalid permission format. Each digit must be 0-7 (e.g., '755').");
+    }
+    newDirectory.setPermissions(perm);
 
     return fileRepository.save(newDirectory);
   }
@@ -483,6 +497,34 @@ public class FileService {
     }
 
     fileRepository.save(fileEntity);
+  }
+
+  @Transactional
+  public FileEntity changePermissions(Long fileId, String newPermissions) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    // Only the owner can change permissions
+    if (!fileEntity.getOwner().getId().equals(currentUser.getId())) {
+      throw new AccessDeniedException("Only the owner can change permissions.");
+    }
+
+    try {
+      // Parse as decimal integer (e.g., 755, 644)
+      int permissions = Integer.parseInt(newPermissions);
+      // Validate that each digit is 0-7 and it's a 3-digit number
+      if (permissions < 0 || permissions > 777 || !newPermissions.matches("[0-7]{3}")) {
+        throw new InvalidPermissionFormatException("Each digit must be 0-7 (e.g., '755').");
+      }
+      fileEntity.setPermissions(permissions);
+    } catch (NumberFormatException e) {
+      throw new InvalidPermissionFormatException(
+          "Invalid permission format. Please use a 3-digit number (e.g., '755').");
+    }
+
+    return fileRepository.save(fileEntity);
   }
 
   private void checkFileLock(FileEntity fileEntity, User currentUser) {

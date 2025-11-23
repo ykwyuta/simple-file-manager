@@ -2,9 +2,12 @@ package com.example.filemanager.controller;
 
 import com.example.filemanager.controller.dto.FolderRequest;
 import com.example.filemanager.domain.FileEntity;
+import com.example.filemanager.domain.User;
 import com.example.filemanager.service.FileService;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,10 +27,14 @@ public class WebController {
     }
 
     @GetMapping("/")
-    public String index(@RequestParam(required = false) Long folderId, Model model) {
+    public String index(
+            @RequestParam(required = false) Long folderId,
+            @AuthenticationPrincipal User currentUser,
+            Model model) {
         List<FileEntity> files = fileService.listFiles(folderId);
         model.addAttribute("files", files);
         model.addAttribute("currentFolderId", folderId);
+        model.addAttribute("currentUser", currentUser);
 
         if (folderId != null) {
             FileEntity currentFolder = fileService.findFileById(folderId);
@@ -49,10 +56,13 @@ public class WebController {
         try {
             fileService.uploadFile(file, parentFolderId, permissions);
             redirectAttributes.addFlashAttribute("message", "File uploaded successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error",
+                    "Permission denied: You don't have write access to this folder.");
         } catch (IOException e) {
             redirectAttributes.addFlashAttribute("error", "Failed to upload file: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Upload failed: " + e.getMessage());
         }
         return "redirect:/" + (parentFolderId != null ? "?folderId=" + parentFolderId : "");
     }
@@ -84,8 +94,11 @@ public class WebController {
         try {
             fileService.softDeleteFile(id);
             redirectAttributes.addFlashAttribute("message", "File deleted successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error",
+                    "Permission denied: You don't have write access to delete this file.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to delete: " + e.getMessage());
         }
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
     }
@@ -118,5 +131,73 @@ public class WebController {
         model.addAttribute("query", query);
         model.addAttribute("tags", tags);
         return "search";
+    }
+
+    @PostMapping("/rename/{id}")
+    public String renameFile(
+            @PathVariable Long id,
+            @RequestParam("name") String name,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.renameFile(id, name);
+            redirectAttributes.addFlashAttribute("message", "File renamed successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error",
+                    "Permission denied: You don't have write access to rename this file.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Rename failed: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @PostMapping("/folders/{id}/versioning")
+    public String toggleVersioning(
+            @PathVariable Long id,
+            @RequestParam("enabled") boolean enabled,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.toggleVersioning(id, enabled);
+            String status = enabled ? "enabled" : "disabled";
+            redirectAttributes.addFlashAttribute("message", "Versioning " + status + " successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error",
+                    "Permission denied: You don't have write access to this folder.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/?folderId=" + id;
+    }
+
+    @PostMapping("/files/{id}/restore/{versionId}")
+    public String restoreFileVersion(
+            @PathVariable Long id,
+            @PathVariable Long versionId,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.restoreFileVersion(id, versionId);
+            redirectAttributes.addFlashAttribute("message", "File version restored successfully!");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @PostMapping("/chmod/{id}")
+    public String changePermissions(
+            @PathVariable Long id,
+            @RequestParam("permissions") String permissions,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.changePermissions(id, permissions);
+            redirectAttributes.addFlashAttribute("message", "Permissions changed successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: Only the owner can change permissions.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to change permissions: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
     }
 }

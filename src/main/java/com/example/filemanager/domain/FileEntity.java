@@ -75,7 +75,6 @@ public class FileEntity {
     @Column(name = "locked_at")
     private LocalDateTime lockedAt;
 
-
     // Getters and Setters
 
     public Long getId() {

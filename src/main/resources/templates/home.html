@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
+
 <head>
     <meta charset="UTF-8">
     <title>File Manager</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -51,14 +53,16 @@
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Size</th>
+                        <th>Owner</th>
+                        <th>Group</th>
+                        <th>Permissions</th>
                         <th>Modified</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr th:if="${parentFolderId != null}">
-                        <td colspan="4">
+                        <td colspan="6">
                             <a th:href="@{'/?folderId=' + ${parentFolderId}}" class="folder-link">
                                 <i class="fas fa-level-up-alt file-icon"></i> ..
                             </a>
@@ -69,22 +73,72 @@
                             <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}" class="folder-link">
                                 <i class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
                                 <span th:text="${file.name}">Folder</span>
+                                <i th:if="${file.versioningEnabled}" class="fas fa-code-branch"
+                                    style="color: #22c55e; margin-left: 0.5rem; font-size: 0.8rem;"
+                                    title="Versioning enabled"></i>
                             </a>
                             <span th:unless="${file.directory}" class="folder-link" style="cursor: default;">
                                 <i class="fas fa-file file-icon" style="color: #94a3b8;"></i>
                                 <span th:text="${file.name}">File</span>
                             </span>
                         </td>
-                        <td>-</td> <!-- Size not in entity yet -->
+                        <td>
+                            <span th:text="${file.owner.username}"
+                                th:classappend="${file.owner.id == currentUser.id ? 'owner-badge' : ''}"
+                                th:title="${file.owner.id == currentUser.id ? 'You are the owner' : 'Owner: ' + file.owner.username}">
+                                owner
+                            </span>
+                        </td>
+                        <td>
+                            <span th:text="${file.group.name}">group</span>
+                        </td>
+                        <td>
+                            <code class="permission-badge"
+                                th:classappend="${file.owner.id == currentUser.id ? 'permission-editable' : ''}"
+                                th:text="${file.permissions}"
+                                th:title="${file.owner.id == currentUser.id ? 'Click to change permissions (Owner: ' + #strings.substring(file.permissions.toString(), 0, 1) + ', Group: ' + #strings.substring(file.permissions.toString(), 1, 2) + ', Others: ' + #strings.substring(file.permissions.toString(), 2, 3) + ')' : 'Owner: ' + #strings.substring(file.permissions.toString(), 0, 1) + ', Group: ' + #strings.substring(file.permissions.toString(), 1, 2) + ', Others: ' + #strings.substring(file.permissions.toString(), 2, 3)}"
+                                th:data-file-id="${file.id}" th:data-file-name="${file.name}"
+                                th:data-file-permissions="${file.permissions}"
+                                th:data-is-owner="${file.owner.id == currentUser.id}"
+                                onclick="handlePermissionClick(this)">
+                                755
+                            </code>
+                        </td>
                         <td th:text="${#temporals.format(file.updatedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
                         <td>
                             <div class="actions">
-                                <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
                                     <i class="fas fa-download"></i>
                                 </a>
-                                <form th:action="@{'/delete/' + ${file.id}}" method="post" onsubmit="return confirm('Are you sure?');" style="display: inline;">
+                                <button th:unless="${file.directory}" type="button" th:data-id="${file.id}"
+                                    th:data-name="${file.name}"
+                                    onclick="openVersionHistoryModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                    title="Version History">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                                <button th:if="${file.directory}" type="button" th:data-id="${file.id}"
+                                    th:data-name="${file.name}" th:data-versioning="${file.versioningEnabled}"
+                                    th:data-owner="${file.owner.id}" th:data-permissions="${file.permissions}"
+                                    onclick="openVersioningToggleModal(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-versioning'), this.getAttribute('data-owner'), this.getAttribute('data-permissions'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                    th:title="${file.owner.id == currentUser.id ? 'Toggle Versioning' : 'Toggle Versioning (requires write permission)'}">
+                                    <i class="fas fa-code-branch"></i>
+                                </button>
+                                <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
+                                    onclick="openRenameModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <form th:action="@{'/delete/' + ${file.id}}" method="post"
+                                    th:data-filename="${file.name}" th:data-owner="${file.owner.id}"
+                                    th:data-permissions="${file.permissions}" th:data-current-user="${currentUser.id}"
+                                    onsubmit="return confirmDeleteFromForm(this);" style="display: inline;">
                                     <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
-                                    <button type="submit" class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <button type="submit" class="btn btn-danger"
+                                        style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                        th:title="${file.owner.id == currentUser.id ? 'Delete' : 'Delete (requires write permission)'}">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </form>
@@ -92,7 +146,7 @@
                         </td>
                     </tr>
                     <tr th:if="${#lists.isEmpty(files)}">
-                        <td colspan="4" style="text-align: center; color: var(--text-secondary);">
+                        <td colspan="6" style="text-align: center; color: var(--text-secondary);">
                             No files found.
                         </td>
                     </tr>
@@ -112,8 +166,9 @@
                     <input type="file" name="file" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label>Permissions (Octal)</label>
-                    <input type="text" name="permissions" class="form-control" value="644" pattern="[0-7]{3}">
+                    <label>Permissions</label>
+                    <input type="text" name="permissions" class="form-control" value="644" pattern="[0-7]{3}"
+                        placeholder="e.g., 644">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                     <button type="button" onclick="closeModal('uploadModal')" class="btn btn-secondary">Cancel</button>
@@ -134,8 +189,9 @@
                     <input type="text" name="name" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label>Permissions (Octal)</label>
-                    <input type="text" name="permissions" class="form-control" value="755" pattern="[0-7]{3}">
+                    <label>Permissions</label>
+                    <input type="text" name="permissions" class="form-control" value="755" pattern="[0-7]{3}"
+                        placeholder="e.g., 755">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                     <button type="button" onclick="closeModal('folderModal')" class="btn btn-secondary">Cancel</button>
@@ -145,19 +201,218 @@
         </div>
     </div>
 
+    <!-- Versioning Toggle Modal -->
+    <div id="versioningModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Toggle Versioning</h2>
+            <p id="versioningStatus" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
+            <form id="versioningForm" method="post">
+                <input type="hidden" name="enabled" id="versioningEnabled">
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('versioningModal')"
+                        class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="versioningSubmitBtn">Enable</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Version History Modal -->
+    <div id="versionHistoryModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <h2 style="margin-top: 0;">Version History: <span id="versionHistoryFileName"></span></h2>
+            <div id="versionHistoryContent" style="margin-bottom: 1rem;">
+                <p style="color: var(--text-secondary);">Loading...</p>
+            </div>
+            <div style="display: flex; justify-content: flex-end;">
+                <button type="button" onclick="closeModal('versionHistoryModal')"
+                    class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="renameModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Rename</h2>
+            <form id="renameForm" method="post">
+                <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>New Name</label>
+                    <input type="text" id="renameInput" name="name" class="form-control" required>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('renameModal')" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Rename</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Permission Change Modal -->
+    <div id="permissionModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Change Permissions</h2>
+            <p id="permissionFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
+            <form id="permissionForm" method="post">
+                <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>Permissions</label>
+                    <input type="text" id="permissionInput" name="permissions" class="form-control" pattern="[0-7]{3}"
+                        maxlength="3" required placeholder="e.g., 755">
+                    <small style="color: var(--text-secondary); display: block; margin-top: 0.5rem;">
+                        Format: Owner-Group-Others (e.g., 755 = rwxr-xr-x)<br>
+                        4=read, 2=write, 1=execute
+                    </small>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('permissionModal')"
+                        class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Change</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Hidden field for current user ID -->
+    <input type="hidden" id="currentUserId" th:value="${currentUser.id}">
+
     <script>
         function openModal(id) {
             document.getElementById(id).classList.add('active');
+        }
+        function openRenameModal(id, currentName) {
+            document.getElementById('renameForm').action = '/rename/' + id;
+            document.getElementById('renameInput').value = currentName;
+            openModal('renameModal');
+        }
+        function openPermissionModal(fileId, fileName, currentPermissions) {
+            document.getElementById('permissionFileName').textContent = 'File: ' + fileName;
+            document.getElementById('permissionForm').action = '/chmod/' + fileId;
+            document.getElementById('permissionInput').value = currentPermissions;
+            openModal('permissionModal');
+        }
+        function handlePermissionClick(element) {
+            const isOwner = element.dataset.isOwner === 'true';
+            if (isOwner) {
+                const fileId = element.dataset.fileId;
+                const fileName = element.dataset.fileName;
+                const permissions = element.dataset.filePermissions;
+                openPermissionModal(fileId, fileName, permissions);
+            }
+        }
+        function openVersioningToggleModal(folderId, folderName, isEnabled, ownerId, permissions) {
+            const enabled = isEnabled === 'true';
+            const currentUserId = parseInt(document.getElementById('currentUserId').value);
+
+            // Check if user is owner
+            const isOwner = parseInt(ownerId) === currentUserId;
+
+            // permissions is a decimal integer like 755
+            const permValue = parseInt(permissions);
+            const ownerPerm = Math.floor(permValue / 100);
+            const hasWritePerm = isOwner && (ownerPerm & 2) === 2;
+
+            let statusText = enabled
+                ? `Versioning is currently enabled for "${folderName}". Do you want to disable it?`
+                : `Versioning is currently disabled for "${folderName}". Do you want to enable it?`;
+
+            if (!hasWritePerm && !isOwner) {
+                statusText += '\n\nNote: You are not the owner of this folder. This operation may fail if you don\'t have write permissions.';
+            } else if (!hasWritePerm) {
+                statusText += '\n\nNote: You don\'t have write permission on this folder (current permissions: ' + permissions + '). This operation will fail.';
+            }
+
+            document.getElementById('versioningStatus').textContent = statusText;
+            document.getElementById('versioningForm').action = '/folders/' + folderId + '/versioning';
+            document.getElementById('versioningEnabled').value = !enabled;
+            document.getElementById('versioningSubmitBtn').textContent = enabled ? 'Disable' : 'Enable';
+
+            openModal('versioningModal');
+        }
+        function openVersionHistoryModal(fileId, fileName) {
+            document.getElementById('versionHistoryFileName').textContent = fileName;
+            document.getElementById('versionHistoryContent').innerHTML = '<p style="color: var(--text-secondary);">Loading...</p>';
+            openModal('versionHistoryModal');
+
+            // Fetch version history from API
+            fetch('/api/files/' + fileId + '/versions')
+                .then(response => response.json())
+                .then(versions => {
+                    if (versions.length === 0) {
+                        document.getElementById('versionHistoryContent').innerHTML =
+                            '<p style="color: var(--text-secondary);">No version history available.</p>';
+                        return;
+                    }
+
+                    let html = '<table class="file-list" style="margin: 0;"><thead><tr>' +
+                        '<th>Version</th><th>Modified By</th><th>Date</th><th>Action</th>' +
+                        '</tr></thead><tbody>';
+
+                    versions.forEach(version => {
+                        const date = new Date(version.createdAt).toLocaleString('ja-JP');
+                        html += `<tr>
+                            <td>v${version.version}</td>
+                            <td>${version.modifier}</td>
+                            <td>${date}</td>
+                            <td>
+                                <form action="/files/${fileId}/restore/${version.id}" method="post" style="display: inline;">
+                                    <input type="hidden" name="currentFolderId" value="${getCurrentFolderId()}">
+                                    <button type="submit" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                        <i class="fas fa-undo"></i> Restore
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>`;
+                    });
+
+                    html += '</tbody></table>';
+                    document.getElementById('versionHistoryContent').innerHTML = html;
+                })
+                .catch(error => {
+                    document.getElementById('versionHistoryContent').innerHTML =
+                        '<p style="color: var(--danger-color);">Error loading version history: ' + error.message + '</p>';
+                });
+        }
+        function getCurrentFolderId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('folderId') || '';
+        }
+        function confirmDelete(fileName, ownerId, permissions, currentUserId) {
+            const isOwner = parseInt(ownerId) === parseInt(currentUserId);
+
+            // permissions is a decimal integer like 755
+            const permValue = parseInt(permissions);
+            const ownerPerm = Math.floor(permValue / 100);
+            const hasWritePerm = isOwner && (ownerPerm & 2) === 2;
+
+            let message = `Are you sure you want to delete "${fileName}"?`;
+
+            if (!hasWritePerm && !isOwner) {
+                message += '\n\nWarning: You are not the owner of this file. This operation may fail if you don\'t have write permissions.';
+            } else if (!hasWritePerm) {
+                message += '\n\nWarning: You don\'t have write permission on this file (current permissions: ' + permissions + '). This operation will likely fail.';
+            }
+
+            return confirm(message);
+        }
+        function confirmDeleteFromForm(form) {
+            const fileName = form.dataset.filename;
+            const ownerId = form.dataset.owner;
+            const permissions = form.dataset.permissions;
+            const currentUserId = form.dataset.currentUser;
+            return confirmDelete(fileName, ownerId, permissions, currentUserId);
         }
         function closeModal(id) {
             document.getElementById(id).classList.remove('active');
         }
         // Close modal when clicking outside
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             if (event.target.classList.contains('modal')) {
                 event.target.classList.remove('active');
             }
         }
     </script>
 </body>
+
 </html>
