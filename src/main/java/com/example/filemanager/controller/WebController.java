@@ -219,6 +219,25 @@ public class WebController {
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
     }
 
+    @PostMapping("/files/{id}/lock")
+    public String toggleLock(
+            @PathVariable Long id,
+            @RequestParam("locked") boolean locked,
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.updateLockStatus(id, locked, currentUser.getUsername());
+            String status = locked ? "locked" : "unlocked";
+            redirectAttributes.addFlashAttribute("message", "File " + status + " successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to update lock status: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
     @GetMapping("/api/folders")
     @ResponseBody
     public List<Map<String, Object>> getFolders() {

@@ -80,6 +80,9 @@
                             <span th:unless="${file.directory}" class="folder-link" style="cursor: default;">
                                 <i class="fas fa-file file-icon" style="color: #94a3b8;"></i>
                                 <span th:text="${file.name}">File</span>
+                                <i th:if="${file.locked}" class="fas fa-lock"
+                                    style="color: #ef4444; margin-left: 0.5rem; font-size: 0.8rem;"
+                                    th:title="'Locked by ' + ${file.lockedBy.username}"></i>
                             </span>
                         </td>
                         <td>
@@ -137,6 +140,19 @@
                                     title="Move">
                                     <i class="fas fa-arrow-right"></i>
                                 </button>
+                                <form
+                                    th:if="${currentFolder != null && currentFolder.versioningEnabled && !file.directory}"
+                                    th:action="@{'/files/' + ${file.id} + '/lock'}" method="post"
+                                    style="display: inline;">
+                                    <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                                    <input type="hidden" name="locked" th:value="${!file.locked}">
+                                    <button type="submit" class="btn btn-secondary"
+                                        style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                        th:title="${file.locked ? 'Unlock' : 'Lock'}"
+                                        th:disabled="${file.locked && file.lockedBy.id != currentUser.id}">
+                                        <i th:class="${file.locked ? 'fas fa-unlock' : 'fas fa-lock'}"></i>
+                                    </button>
+                                </form>
                                 <form th:action="@{'/delete/' + ${file.id}}" method="post"
                                     th:data-filename="${file.name}" th:data-owner="${file.owner.id}"
                                     th:data-permissions="${file.permissions}" th:data-current-user="${currentUser.id}"
