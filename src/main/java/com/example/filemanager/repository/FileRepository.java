@@ -1,6 +1,8 @@
 package com.example.filemanager.repository;
 
 import com.example.filemanager.domain.FileEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
@@ -40,6 +42,17 @@ public interface FileRepository extends JpaRepository<FileEntity, Long>, JpaSpec
      * @return A list of FileEntity objects in the specified folder.
      */
     List<FileEntity> findAllByParentAndDeletedAtIsNull(FileEntity parent);
+
+    /**
+     * Finds all files in a specific parent folder with pagination, only if they
+     * have not been
+     * soft-deleted.
+     *
+     * @param parent   The parent folder entity.
+     * @param pageable Pagination information.
+     * @return A page of FileEntity objects in the specified folder.
+     */
+    Page<FileEntity> findAllByParentAndDeletedAtIsNull(FileEntity parent, Pageable pageable);
 
     /**
      * Finds all files that have been soft-deleted.

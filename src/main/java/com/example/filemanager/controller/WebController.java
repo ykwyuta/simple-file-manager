@@ -6,6 +6,9 @@ import com.example.filemanager.domain.User;
 import com.example.filemanager.service.FileService;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -35,10 +38,18 @@ public class WebController {
     @GetMapping("/")
     public String index(
             @RequestParam(required = false) Long folderId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal User currentUser,
             Model model) {
-        List<FileEntity> files = fileService.listFiles(folderId);
-        model.addAttribute("files", files);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<FileEntity> filesPage = fileService.listFiles(folderId, pageable);
+
+        model.addAttribute("files", filesPage.getContent());
+        model.addAttribute("currentPage", page);
+        model.addAttribute("totalPages", filesPage.getTotalPages());
+        model.addAttribute("totalItems", filesPage.getTotalElements());
+        model.addAttribute("pageSize", size);
         model.addAttribute("currentFolderId", folderId);
         model.addAttribute("currentUser", currentUser);
 

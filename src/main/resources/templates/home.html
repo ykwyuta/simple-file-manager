@@ -188,6 +188,45 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- Pagination Controls -->
+        <div th:if="${totalPages > 1}" class="pagination-container"
+            style="margin-top: 1rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem;">
+            <a th:if="${currentPage > 0}"
+                th:href="@{'/?folderId=' + ${currentFolderId} + '&page=' + ${currentPage - 1} + '&size=' + ${pageSize}}"
+                class="btn btn-secondary" style="padding: 0.5rem 0.75rem;">
+                <i class="fas fa-chevron-left"></i> Previous
+            </a>
+
+            <div style="display: flex; gap: 0.25rem;">
+                <th:block th:each="i : ${#numbers.sequence(0, totalPages - 1)}">
+                    <a th:if="${i == currentPage}"
+                        th:href="@{'/?folderId=' + ${currentFolderId} + '&page=' + ${i} + '&size=' + ${pageSize}}"
+                        class="btn btn-primary" style="padding: 0.5rem 0.75rem; min-width: 2.5rem;">
+                        <span th:text="${i + 1}">1</span>
+                    </a>
+                    <a th:if="${i != currentPage && (i < 2 || i > totalPages - 3 || (i >= currentPage - 1 && i <= currentPage + 1))}"
+                        th:href="@{'/?folderId=' + ${currentFolderId} + '&page=' + ${i} + '&size=' + ${pageSize}}"
+                        class="btn btn-secondary" style="padding: 0.5rem 0.75rem; min-width: 2.5rem;">
+                        <span th:text="${i + 1}">1</span>
+                    </a>
+                    <span th:if="${i == 2 && currentPage > 3}" style="padding: 0.5rem;">...</span>
+                    <span th:if="${i == totalPages - 3 && currentPage < totalPages - 4}"
+                        style="padding: 0.5rem;">...</span>
+                </th:block>
+            </div>
+
+            <a th:if="${currentPage < totalPages - 1}"
+                th:href="@{'/?folderId=' + ${currentFolderId} + '&page=' + ${currentPage + 1} + '&size=' + ${pageSize}}"
+                class="btn btn-secondary" style="padding: 0.5rem 0.75rem;">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+
+            <span style="margin-left: 1rem; color: var(--text-secondary);">
+                Page <span th:text="${currentPage + 1}">1</span> of <span th:text="${totalPages}">1</span>
+                (<span th:text="${totalItems}">0</span> items)
+            </span>
+        </div>
     </div>
 
     <!-- Upload Modal -->

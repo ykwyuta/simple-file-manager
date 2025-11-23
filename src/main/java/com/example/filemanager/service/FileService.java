@@ -22,6 +22,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -205,6 +208,30 @@ public class FileService {
     return files.stream()
         .filter(file -> permissionService.canRead(file, currentUser))
         .collect(Collectors.toList());
+  }
+
+  @Transactional(readOnly = true)
+  public Page<FileEntity> listFiles(Long parentId, Pageable pageable) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity parent = null;
+    if (parentId != null) {
+      parent = fileRepository
+          .findByIdAndDeletedAtIsNull(parentId)
+          .orElseThrow(
+              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentId));
+      if (!permissionService.canRead(parent, currentUser)) {
+        throw new AccessDeniedException("You do not have permission to access this folder.");
+      }
+    }
+
+    Page<FileEntity> filesPage = fileRepository.findAllByParentAndDeletedAtIsNull(parent, pageable);
+
+    // Filter files based on read permission
+    List<FileEntity> filteredFiles = filesPage.getContent().stream()
+        .filter(file -> permissionService.canRead(file, currentUser))
+        .collect(Collectors.toList());
+
+    return new PageImpl<>(filteredFiles, pageable, filesPage.getTotalElements());
   }
 
   @Transactional
