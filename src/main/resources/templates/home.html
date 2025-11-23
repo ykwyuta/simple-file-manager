@@ -53,9 +53,12 @@
 
         <div class="breadcrumb">
             <a href="/"><i class="fas fa-home"></i> Home</a>
-            <span th:if="${currentFolder != null}"> / </span>
-            <!-- Simple breadcrumb for now, ideally recursive -->
-            <span th:if="${currentFolder != null}" th:text="${currentFolder.name}">Folder</span>
+            <th:block th:each="folder : ${breadcrumbs}">
+                <span> / </span>
+                <a th:if="${folder.id != currentFolder.id}" th:href="@{'/?folderId=' + ${folder.id}}"
+                    th:text="${folder.name}">Folder</a>
+                <span th:if="${folder.id == currentFolder.id}" th:text="${folder.name}">Folder</span>
+            </th:block>
         </div>
 
         <div class="card">

@@ -17,6 +17,7 @@ import com.example.filemanager.repository.UserRepository;
 import io.awspring.cloud.s3.S3Template;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -525,6 +526,23 @@ public class FileService {
     }
 
     return fileRepository.save(fileEntity);
+  }
+
+  @Transactional(readOnly = true)
+  public List<FileEntity> getBreadcrumbs(Long folderId) {
+    if (folderId == null) {
+      return new ArrayList<>();
+    }
+    // findFileById checks for read permission on the folder itself
+    FileEntity folder = findFileById(folderId);
+
+    List<FileEntity> breadcrumbs = new ArrayList<>();
+    FileEntity current = folder;
+    while (current != null) {
+      breadcrumbs.add(0, current);
+      current = current.getParent();
+    }
+    return breadcrumbs;
   }
 
   private void checkFileLock(FileEntity fileEntity, User currentUser) {

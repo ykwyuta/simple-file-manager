@@ -40,6 +40,7 @@ public class WebController {
         if (folderId != null) {
             FileEntity currentFolder = fileService.findFileById(folderId);
             model.addAttribute("currentFolder", currentFolder);
+            model.addAttribute("breadcrumbs", fileService.getBreadcrumbs(folderId));
             if (currentFolder.getParent() != null) {
                 model.addAttribute("parentFolderId", currentFolder.getParent().getId());
             }
@@ -269,4 +270,5 @@ public class WebController {
         }
         return getFullPath(file.getParent()) + "/" + file.getName();
     }
+
 }
