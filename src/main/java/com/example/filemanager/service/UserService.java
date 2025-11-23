@@ -1,9 +1,11 @@
 package com.example.filemanager.service;
 
+import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
 import com.example.filemanager.exception.GroupNotFoundException;
 import com.example.filemanager.exception.UserNotFoundException;
+import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.GroupRepository;
 import com.example.filemanager.repository.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -24,12 +26,14 @@ public class UserService implements UserDetailsService {
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
     private final PasswordEncoder passwordEncoder;
+    private final FileRepository fileRepository;
 
     public UserService(UserRepository userRepository, GroupRepository groupRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder, FileRepository fileRepository) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
         this.passwordEncoder = passwordEncoder;
+        this.fileRepository = fileRepository;
     }
 
     public User createUser(User user, List<Long> groupIds) {
@@ -93,6 +97,17 @@ public class UserService implements UserDetailsService {
         if ("admin".equals(user.getUsername())) {
             throw new IllegalArgumentException("Cannot delete admin user");
         }
+
+        // Transfer ownership of all files/folders to admin user
+        User adminUser = userRepository.findByUsername("admin")
+                .orElseThrow(() -> new UserNotFoundException("Admin user not found"));
+
+        List<FileEntity> ownedFiles = fileRepository.findAllByOwner(user);
+        for (FileEntity file : ownedFiles) {
+            file.setOwner(adminUser);
+            fileRepository.save(file);
+        }
+
         userRepository.deleteById(id);
     }
 
