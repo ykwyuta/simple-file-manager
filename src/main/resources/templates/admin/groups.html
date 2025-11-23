@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Group Management - File Manager</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-users"></i> Group Management</h1>
+            <div class="actions">
+                <a href="/" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Home
+                </a>
+            </div>
+        </header>
+
+        <div th:if="${message}" class="alert alert-success">
+            <i class="fas fa-check-circle"></i> <span th:text="${message}"></span>
+        </div>
+        <div th:if="${error}" class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i> <span th:text="${error}"></span>
+        </div>
+
+        <div class="actions" style="margin-bottom: 1rem; display: flex; gap: 1rem;">
+            <button onclick="openModal('createGroupModal')" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Create Group
+            </button>
+            <a href="/admin/users" class="btn btn-secondary">
+                <i class="fas fa-users-cog"></i> Manage Users
+            </a>
+        </div>
+
+        <div class="card">
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Group Name</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="group : ${groups}">
+                        <td th:text="${group.id}">1</td>
+                        <td th:text="${group.name}">groupname</td>
+                        <td>
+                            <div class="actions">
+                                <button type="button" th:data-id="${group.id}" th:data-name="${group.name}"
+                                    onclick="openEditGroupModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <form th:action="@{'/admin/groups/' + ${group.id} + '/delete'}" method="post"
+                                    onsubmit="return confirm('Are you sure you want to delete this group?');"
+                                    style="display: inline;">
+                                    <button type="submit" class="btn btn-danger"
+                                        style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(groups)}">
+                        <td colspan="3" style="text-align: center; color: var(--text-secondary);">
+                            No groups found.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Create Group Modal -->
+    <div id="createGroupModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Create Group</h2>
+            <form action="/admin/groups" method="post">
+                <div class="form-group">
+                    <label>Group Name</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('createGroupModal')"
+                        class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Group Modal -->
+    <div id="editGroupModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Edit Group</h2>
+            <form id="editGroupForm" method="post">
+                <div class="form-group">
+                    <label>Group Name</label>
+                    <input type="text" id="editGroupName" name="name" class="form-control" required>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('editGroupModal')"
+                        class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openModal(id) {
+            document.getElementById(id).classList.add('active');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        function openEditGroupModal(id, name) {
+            document.getElementById('editGroupForm').action = '/admin/groups/' + id + '/update';
+            document.getElementById('editGroupName').value = name;
+            openModal('editGroupModal');
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function (event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.classList.remove('active');
+            }
+        }
+    </script>
+</body>
+
+</html>

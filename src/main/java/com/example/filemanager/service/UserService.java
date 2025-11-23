@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,15 +25,24 @@ public class UserService implements UserDetailsService {
     private final GroupRepository groupRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository, GroupRepository groupRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, GroupRepository groupRepository,
+            PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
-    public User createUser(User user) {
+    public User createUser(User user, List<Long> groupIds) {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
+        if (groupIds != null && !groupIds.isEmpty()) {
+            List<Group> groups = groupRepository.findAllById(groupIds);
+            user.setGroups(new HashSet<>(groups));
+        }
         return userRepository.save(user);
+    }
+
+    public User createUser(User user) {
+        return createUser(user, null);
     }
 
     @Transactional(readOnly = true)
@@ -45,14 +55,22 @@ public class UserService implements UserDetailsService {
         return userRepository.findAll();
     }
 
-    public User updateUser(Long id, User userDetails) {
+    public User updateUser(Long id, User userDetails, List<Long> groupIds) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
         user.setUsername(userDetails.getUsername());
         if (userDetails.getPassword() != null && !userDetails.getPassword().isEmpty()) {
             user.setPassword(passwordEncoder.encode(userDetails.getPassword()));
         }
+        if (groupIds != null) {
+            List<Group> groups = groupRepository.findAllById(groupIds);
+            user.setGroups(new HashSet<>(groups));
+        }
         return userRepository.save(user);
+    }
+
+    public User updateUser(Long id, User userDetails) {
+        return updateUser(id, userDetails, null);
     }
 
     public void deleteUser(Long id) {

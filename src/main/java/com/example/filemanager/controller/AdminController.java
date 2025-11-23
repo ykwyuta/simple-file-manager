@@ -1,6 +1,8 @@
 package com.example.filemanager.controller;
 
+import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
+import com.example.filemanager.service.GroupService;
 import com.example.filemanager.service.UserService;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -14,22 +16,27 @@ import java.util.List;
 public class AdminController {
 
     private final UserService userService;
+    private final GroupService groupService;
 
-    public AdminController(UserService userService) {
+    public AdminController(UserService userService, GroupService groupService) {
         this.userService = userService;
+        this.groupService = groupService;
     }
 
     @GetMapping
     public String listUsers(Model model) {
         List<User> users = userService.findAllUsers();
+        List<Group> groups = groupService.findAllGroups();
         model.addAttribute("users", users);
+        model.addAttribute("groups", groups);
         return "admin/users";
     }
 
     @PostMapping
-    public String createUser(@ModelAttribute User user, RedirectAttributes redirectAttributes) {
+    public String createUser(@ModelAttribute User user, @RequestParam(required = false) List<Long> groupIds,
+            RedirectAttributes redirectAttributes) {
         try {
-            userService.createUser(user);
+            userService.createUser(user, groupIds);
             redirectAttributes.addFlashAttribute("message", "User created successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to create user: " + e.getMessage());
@@ -38,9 +45,10 @@ public class AdminController {
     }
 
     @PostMapping("/{id}/update")
-    public String updateUser(@PathVariable Long id, @ModelAttribute User user, RedirectAttributes redirectAttributes) {
+    public String updateUser(@PathVariable Long id, @ModelAttribute User user,
+            @RequestParam(required = false) List<Long> groupIds, RedirectAttributes redirectAttributes) {
         try {
-            userService.updateUser(id, user);
+            userService.updateUser(id, user, groupIds);
             redirectAttributes.addFlashAttribute("message", "User updated successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to update user: " + e.getMessage());
