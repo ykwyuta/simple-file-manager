@@ -58,6 +58,20 @@ public class UserService implements UserDetailsService {
     public User updateUser(Long id, User userDetails, List<Long> groupIds) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
+
+        if ("admin".equals(user.getUsername())) {
+            if (!"admin".equals(userDetails.getUsername())) {
+                throw new IllegalArgumentException("Cannot change username of admin user");
+            }
+            if (groupIds != null) {
+                Group adminsGroup = groupRepository.findByName("admins")
+                        .orElseThrow(() -> new GroupNotFoundException("Admins group not found"));
+                if (groupIds.size() != 1 || !groupIds.contains(adminsGroup.getId())) {
+                    throw new IllegalArgumentException("Admin user must belong to and only to 'admins' group");
+                }
+            }
+        }
+
         user.setUsername(userDetails.getUsername());
         if (userDetails.getPassword() != null && !userDetails.getPassword().isEmpty()) {
             user.setPassword(passwordEncoder.encode(userDetails.getPassword()));
@@ -74,6 +88,11 @@ public class UserService implements UserDetailsService {
     }
 
     public void deleteUser(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
+        if ("admin".equals(user.getUsername())) {
+            throw new IllegalArgumentException("Cannot delete admin user");
+        }
         userRepository.deleteById(id);
     }
 

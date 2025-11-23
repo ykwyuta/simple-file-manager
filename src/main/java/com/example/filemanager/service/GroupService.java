@@ -36,11 +36,19 @@ public class GroupService {
     public Group updateGroup(Long id, Group groupDetails) {
         Group group = groupRepository.findById(id)
                 .orElseThrow(() -> new GroupNotFoundException("Group not found with id: " + id));
+        if ("admins".equals(group.getName()) && !"admins".equals(groupDetails.getName())) {
+            throw new IllegalArgumentException("Cannot rename admins group");
+        }
         group.setName(groupDetails.getName());
         return groupRepository.save(group);
     }
 
     public void deleteGroup(Long id) {
+        Group group = groupRepository.findById(id)
+                .orElseThrow(() -> new GroupNotFoundException("Group not found with id: " + id));
+        if ("admins".equals(group.getName())) {
+            throw new IllegalArgumentException("Cannot delete admins group");
+        }
         groupRepository.deleteById(id);
     }
 }
