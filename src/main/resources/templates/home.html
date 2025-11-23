@@ -53,14 +53,16 @@
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Size</th>
+                        <th>Owner</th>
+                        <th>Group</th>
+                        <th>Permissions</th>
                         <th>Modified</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr th:if="${parentFolderId != null}">
-                        <td colspan="4">
+                        <td colspan="6">
                             <a th:href="@{'/?folderId=' + ${parentFolderId}}" class="folder-link">
                                 <i class="fas fa-level-up-alt file-icon"></i> ..
                             </a>
@@ -80,7 +82,22 @@
                                 <span th:text="${file.name}">File</span>
                             </span>
                         </td>
-                        <td>-</td> <!-- Size not in entity yet -->
+                        <td>
+                            <span th:text="${file.owner.username}"
+                                th:classappend="${file.owner.id == currentUser.id ? 'owner-badge' : ''}"
+                                th:title="${file.owner.id == currentUser.id ? 'You are the owner' : 'Owner: ' + file.owner.username}">
+                                owner
+                            </span>
+                        </td>
+                        <td>
+                            <span th:text="${file.group.name}">group</span>
+                        </td>
+                        <td>
+                            <code class="permission-badge" th:text="${file.permissions}"
+                                th:title="'Owner: ' + ${#strings.substring(file.permissions.toString(), 0, 1)} + ', Group: ' + ${#strings.substring(file.permissions.toString(), 1, 2)} + ', Others: ' + ${#strings.substring(file.permissions.toString(), 2, 3)}">
+                                755
+                            </code>
+                        </td>
                         <td th:text="${#temporals.format(file.updatedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
                         <td>
                             <div class="actions">
@@ -123,7 +140,7 @@
                         </td>
                     </tr>
                     <tr th:if="${#lists.isEmpty(files)}">
-                        <td colspan="4" style="text-align: center; color: var(--text-secondary);">
+                        <td colspan="6" style="text-align: center; color: var(--text-secondary);">
                             No files found.
                         </td>
                     </tr>
