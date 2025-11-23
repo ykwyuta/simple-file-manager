@@ -335,12 +335,113 @@
     <input type="hidden" id="currentUserId" th:value="${currentUser.id}">
 
     <script>
+        // Alert Dismissal Logic
+        document.addEventListener('DOMContentLoaded', function () {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                // Add close button
+                const closeBtn = document.createElement('span');
+                closeBtn.innerHTML = '&times;';
+                closeBtn.className = 'close-btn';
+                closeBtn.style.cursor = 'pointer';
+                closeBtn.style.float = 'right';
+                closeBtn.style.fontSize = '1.2rem';
+                closeBtn.style.fontWeight = 'bold';
+                closeBtn.style.marginLeft = '10px';
+                closeBtn.onclick = function () {
+                    alert.style.opacity = '0';
+                    setTimeout(() => alert.remove(), 300);
+                };
+                alert.insertBefore(closeBtn, alert.firstChild);
+
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    if (alert) {
+                        alert.style.transition = 'opacity 0.5s ease';
+                        alert.style.opacity = '0';
+                        setTimeout(() => alert.remove(), 500);
+                    }
+                }, 5000);
+            });
+
+            // Form Validation Setup
+            setupValidation('folderModal', 'name', validateFilename);
+            setupValidation('folderModal', 'permissions', validatePermissions);
+            setupValidation('uploadModal', 'permissions', validatePermissions);
+            setupValidation('renameModal', 'renameInput', validateFilename);
+            setupValidation('permissionModal', 'permissionInput', validatePermissions);
+        });
+
+        function setupValidation(modalId, inputNameOrId, validationFn) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+
+            const input = modal.querySelector(`[name="${inputNameOrId}"]`) || document.getElementById(inputNameOrId);
+            if (!input) return;
+
+            const form = input.closest('form');
+            const submitBtn = form.querySelector('button[type="submit"]');
+
+            // Create error message element
+            const errorMsg = document.createElement('small');
+            errorMsg.className = 'validation-error';
+            errorMsg.style.color = '#ef4444';
+            errorMsg.style.display = 'none';
+            errorMsg.style.marginTop = '0.25rem';
+            input.parentNode.appendChild(errorMsg);
+
+            const validate = () => {
+                const result = validationFn(input.value);
+                if (!result.valid) {
+                    errorMsg.textContent = result.message;
+                    errorMsg.style.display = 'block';
+                    input.style.borderColor = '#ef4444';
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.5';
+                    submitBtn.style.cursor = 'not-allowed';
+                } else {
+                    errorMsg.style.display = 'none';
+                    input.style.borderColor = ''; // Reset to default
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                }
+            };
+
+            input.addEventListener('input', validate);
+        }
+
+        function validateFilename(name) {
+            if (!name || name.trim() === '') {
+                return { valid: false, message: 'Name cannot be empty.' };
+            }
+            const illegalChars = /[\\/:*?"<>|]/;
+            if (illegalChars.test(name)) {
+                return { valid: false, message: 'Name cannot contain \\ / : * ? " < > |' };
+            }
+            if (name.length > 255) {
+                return { valid: false, message: 'Name is too long (max 255 characters).' };
+            }
+            return { valid: true };
+        }
+
+        function validatePermissions(perms) {
+            const regex = /^[0-7]{3}$/;
+            if (!regex.test(perms)) {
+                return { valid: false, message: 'Permissions must be 3 digits (0-7), e.g., 755.' };
+            }
+            return { valid: true };
+        }
+
         function openModal(id) {
             document.getElementById(id).classList.add('active');
         }
         function openRenameModal(id, currentName) {
             document.getElementById('renameForm').action = '/rename/' + id;
-            document.getElementById('renameInput').value = currentName;
+            const input = document.getElementById('renameInput');
+            input.value = currentName;
+            // Trigger validation to reset state
+            input.dispatchEvent(new Event('input'));
             openModal('renameModal');
         }
         function openMoveModal(fileId, fileName) {
@@ -373,7 +474,10 @@
         function openPermissionModal(fileId, fileName, currentPermissions) {
             document.getElementById('permissionFileName').textContent = 'File: ' + fileName;
             document.getElementById('permissionForm').action = '/chmod/' + fileId;
-            document.getElementById('permissionInput').value = currentPermissions;
+            const input = document.getElementById('permissionInput');
+            input.value = currentPermissions;
+            // Trigger validation
+            input.dispatchEvent(new Event('input'));
             openModal('permissionModal');
         }
         function handlePermissionClick(element) {

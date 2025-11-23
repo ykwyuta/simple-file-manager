@@ -57,6 +57,36 @@
             </table>
         </div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                // Add close button
+                const closeBtn = document.createElement('span');
+                closeBtn.innerHTML = '&times;';
+                closeBtn.className = 'close-btn';
+                closeBtn.style.cursor = 'pointer';
+                closeBtn.style.float = 'right';
+                closeBtn.style.fontSize = '1.2rem';
+                closeBtn.style.fontWeight = 'bold';
+                closeBtn.style.marginLeft = '10px';
+                closeBtn.onclick = function () {
+                    alert.style.opacity = '0';
+                    setTimeout(() => alert.remove(), 300);
+                };
+                alert.insertBefore(closeBtn, alert.firstChild);
+
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    if (alert) {
+                        alert.style.transition = 'opacity 0.5s ease';
+                        alert.style.opacity = '0';
+                        setTimeout(() => alert.remove(), 500);
+                    }
+                }, 5000);
+            });
+        });
+    </script>
 </body>
 
 </html>

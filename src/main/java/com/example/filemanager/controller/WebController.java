@@ -13,6 +13,11 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import com.example.filemanager.exception.DuplicateFileException;
+import com.example.filemanager.exception.FileLockedException;
+import com.example.filemanager.exception.InvalidPermissionFormatException;
+import com.example.filemanager.exception.ParentNotDirectoryException;
+import com.example.filemanager.exception.ResourceNotFoundException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +66,12 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to this folder.");
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate file: " + e.getMessage());
+        } catch (InvalidPermissionFormatException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid permissions: " + e.getMessage());
+        } catch (ParentNotDirectoryException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid parent folder: " + e.getMessage());
         } catch (IOException e) {
             redirectAttributes.addFlashAttribute("error", "Failed to upload file: " + e.getMessage());
         } catch (Exception e) {
@@ -82,8 +93,14 @@ public class WebController {
             request.setPermissions(permissions);
             fileService.createDirectory(request);
             redirectAttributes.addFlashAttribute("message", "Folder created successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate folder: " + e.getMessage());
+        } catch (InvalidPermissionFormatException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid permissions: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to create folder: " + e.getMessage());
         }
         return "redirect:/" + (parentFolderId != null ? "?folderId=" + parentFolderId : "");
     }
@@ -99,6 +116,10 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to delete this file.");
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot delete: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to delete: " + e.getMessage());
         }
@@ -117,8 +138,12 @@ public class WebController {
         try {
             fileService.restoreFile(id);
             redirectAttributes.addFlashAttribute("message", "File restored successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to restore: " + e.getMessage());
         }
         return "redirect:/trash";
     }
@@ -147,6 +172,12 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to rename this file.");
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate name: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot rename: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Rename failed: " + e.getMessage());
         }
@@ -165,8 +196,12 @@ public class WebController {
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
                     "Permission denied: You don't have write access to this folder.");
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "Folder not found: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid operation: " + e.getMessage());
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Failed to toggle versioning: " + e.getMessage());
         }
         return "redirect:/?folderId=" + id;
     }
@@ -197,6 +232,10 @@ public class WebController {
             redirectAttributes.addFlashAttribute("message", "Permissions changed successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: Only the owner can change permissions.");
+        } catch (InvalidPermissionFormatException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid permissions: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to change permissions: " + e.getMessage());
         }
@@ -214,6 +253,14 @@ public class WebController {
             redirectAttributes.addFlashAttribute("message", "File moved successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (DuplicateFileException e) {
+            redirectAttributes.addFlashAttribute("error", "Duplicate file in destination: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot move: " + e.getMessage());
+        } catch (ParentNotDirectoryException e) {
+            redirectAttributes.addFlashAttribute("error", "Invalid destination: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File or folder not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to move: " + e.getMessage());
         }
@@ -233,6 +280,10 @@ public class WebController {
             redirectAttributes.addFlashAttribute("message", "File " + status + " successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Lock error: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to update lock status: " + e.getMessage());
         }
