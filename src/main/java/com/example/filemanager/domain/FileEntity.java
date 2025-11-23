@@ -125,13 +125,6 @@ public class FileEntity {
         this.permissions = permissions;
     }
 
-    public String getPermissionsOctal() {
-        if (permissions == null) {
-            return "000";
-        }
-        return String.format("%03o", permissions);
-    }
-
     public FileEntity getParent() {
         return parent;
     }

@@ -24,17 +24,16 @@ public class PermissionService {
     public boolean isAllowed(FileEntity fileEntity, User user, Permission requiredPermission) {
         int permissions = fileEntity.getPermissions();
 
-        // Convert decimal to octal string to extract individual permission digits
-        String octalStr = String.format("%03o", permissions);
-        int ownerPerm = Character.getNumericValue(octalStr.charAt(0));
-        int groupPerm = Character.getNumericValue(octalStr.charAt(1));
-        int otherPerm = Character.getNumericValue(octalStr.charAt(2));
+        // Extract individual permission digits (e.g., 755 -> 7, 5, 5)
+        int ownerPerm = permissions / 100;
+        int groupPerm = (permissions / 10) % 10;
+        int otherPerm = permissions % 10;
 
         // Check if user is owner
         if (fileEntity.getOwner().getId().equals(user.getId())) {
             boolean allowed = hasPermission(ownerPerm, requiredPermission);
             logger.debug("Owner check for file '{}' (permissions: {}): user={}, ownerPerm={}, required={}, allowed={}",
-                    fileEntity.getName(), octalStr, user.getUsername(), ownerPerm, requiredPermission, allowed);
+                    fileEntity.getName(), permissions, user.getUsername(), ownerPerm, requiredPermission, allowed);
             return allowed;
         }
 
@@ -44,14 +43,14 @@ public class PermissionService {
         if (inGroup) {
             boolean allowed = hasPermission(groupPerm, requiredPermission);
             logger.debug("Group check for file '{}' (permissions: {}): user={}, groupPerm={}, required={}, allowed={}",
-                    fileEntity.getName(), octalStr, user.getUsername(), groupPerm, requiredPermission, allowed);
+                    fileEntity.getName(), permissions, user.getUsername(), groupPerm, requiredPermission, allowed);
             return allowed;
         }
 
         // Check others permission
         boolean allowed = hasPermission(otherPerm, requiredPermission);
         logger.debug("Others check for file '{}' (permissions: {}): user={}, otherPerm={}, required={}, allowed={}",
-                fileEntity.getName(), octalStr, user.getUsername(), otherPerm, requiredPermission, allowed);
+                fileEntity.getName(), permissions, user.getUsername(), otherPerm, requiredPermission, allowed);
         return allowed;
     }
 
