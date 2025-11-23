@@ -183,4 +183,21 @@ public class WebController {
         }
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
     }
+
+    @PostMapping("/chmod/{id}")
+    public String changePermissions(
+            @PathVariable Long id,
+            @RequestParam("permissions") String permissions,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.changePermissions(id, permissions);
+            redirectAttributes.addFlashAttribute("message", "Permissions changed successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: Only the owner can change permissions.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to change permissions: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
 }

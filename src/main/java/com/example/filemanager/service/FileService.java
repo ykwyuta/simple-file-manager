@@ -485,6 +485,33 @@ public class FileService {
     fileRepository.save(fileEntity);
   }
 
+  @Transactional
+  public FileEntity changePermissions(Long fileId, String newPermissions) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    // Only the owner can change permissions
+    if (!fileEntity.getOwner().getId().equals(currentUser.getId())) {
+      throw new AccessDeniedException("Only the owner can change permissions.");
+    }
+
+    try {
+      int permissions = Integer.parseInt(newPermissions, 8);
+      // Validate that permissions are in valid range (0-777)
+      if (permissions < 0 || permissions > 511) { // 511 = 0777 in octal
+        throw new InvalidPermissionFormatException("Permissions must be between 000 and 777.");
+      }
+      fileEntity.setPermissions(permissions);
+    } catch (NumberFormatException e) {
+      throw new InvalidPermissionFormatException(
+          "Invalid permission format. Please use an octal number string (e.g., '755').");
+    }
+
+    return fileRepository.save(fileEntity);
+  }
+
   private void checkFileLock(FileEntity fileEntity, User currentUser) {
     if (fileEntity.isLocked() && (fileEntity.getLockedBy() == null || !fileEntity.getLockedBy().equals(currentUser))) {
       throw new FileLockedException("File is locked by another user and cannot be modified.");

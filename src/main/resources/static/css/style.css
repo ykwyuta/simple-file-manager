@@ -266,3 +266,15 @@ h1 {
     border: 1px solid var(--border-color);
     cursor: help;
 }
+
+.permission-editable {
+    cursor: pointer !important;
+    transition: all 0.2s;
+}
+
+.permission-editable:hover {
+    background-color: var(--accent-color);
+    color: var(--bg-color);
+    border-color: var(--accent-color);
+    transform: scale(1.05);
+}
