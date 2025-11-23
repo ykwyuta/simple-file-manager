@@ -12,11 +12,17 @@
     <div class="container">
         <header>
             <h1><i class="fas fa-cloud"></i> File Manager</h1>
-            <div class="search-bar">
-                <form action="/search" method="get" style="display: flex; gap: 0.5rem;">
-                    <input type="text" name="query" class="form-control" placeholder="Search files...">
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
-                </form>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <a href="/admin/users" class="btn btn-secondary"
+                    style="color: var(--text-primary); text-decoration: none;">
+                    <i class="fas fa-users-cog"></i> Users
+                </a>
+                <div class="search-bar">
+                    <form action="/search" method="get" style="display: flex; gap: 0.5rem;">
+                        <input type="text" name="query" class="form-control" placeholder="Search files...">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
+                    </form>
+                </div>
             </div>
         </header>
 
