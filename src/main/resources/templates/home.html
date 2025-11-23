@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
+
 <head>
     <meta charset="UTF-8">
     <title>File Manager</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -79,12 +81,20 @@
                         <td th:text="${#temporals.format(file.updatedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
                         <td>
                             <div class="actions">
-                                <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
                                     <i class="fas fa-download"></i>
                                 </a>
-                                <form th:action="@{'/delete/' + ${file.id}}" method="post" onsubmit="return confirm('Are you sure?');" style="display: inline;">
+                                <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
+                                    onclick="openRenameModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <form th:action="@{'/delete/' + ${file.id}}" method="post"
+                                    onsubmit="return confirm('Are you sure?');" style="display: inline;">
                                     <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
-                                    <button type="submit" class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <button type="submit" class="btn btn-danger"
+                                        style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </form>
@@ -145,19 +155,43 @@
         </div>
     </div>
 
+    <!-- Rename Modal -->
+    <div id="renameModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Rename</h2>
+            <form id="renameForm" method="post">
+                <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>New Name</label>
+                    <input type="text" id="renameInput" name="name" class="form-control" required>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('renameModal')" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Rename</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         function openModal(id) {
             document.getElementById(id).classList.add('active');
+        }
+        function openRenameModal(id, currentName) {
+            document.getElementById('renameForm').action = '/rename/' + id;
+            document.getElementById('renameInput').value = currentName;
+            openModal('renameModal');
         }
         function closeModal(id) {
             document.getElementById(id).classList.remove('active');
         }
         // Close modal when clicking outside
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             if (event.target.classList.contains('modal')) {
                 event.target.classList.remove('active');
             }
         }
     </script>
 </body>
+
 </html>

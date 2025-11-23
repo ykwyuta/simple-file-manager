@@ -119,4 +119,19 @@ public class WebController {
         model.addAttribute("tags", tags);
         return "search";
     }
+
+    @PostMapping("/rename/{id}")
+    public String renameFile(
+            @PathVariable Long id,
+            @RequestParam("name") String name,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.renameFile(id, name);
+            redirectAttributes.addFlashAttribute("message", "File renamed successfully!");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
 }
