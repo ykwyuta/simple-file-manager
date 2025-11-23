@@ -1,0 +1,4 @@
+username,password,groups
+admin,admin,admins
+user,password,users
+developer,dev123,"developers,users"

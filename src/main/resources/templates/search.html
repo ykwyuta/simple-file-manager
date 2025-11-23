@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Search Results - File Manager</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-search"></i> Search Results</h1>
+            <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to Home</a>
+        </header>
+
+        <div class="search-bar" style="margin-bottom: 2rem;">
+            <form action="/search" method="get" style="display: flex; gap: 0.5rem; width: 100%;">
+                <input type="text" name="query" class="form-control" th:value="${query}" placeholder="Search files...">
+                <input type="text" name="tags" class="form-control" th:value="${tags}"
+                    placeholder="Tags (comma separated)">
+                <button type="submit" class="btn btn-primary">Search</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Location</th>
+                        <th>Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="file : ${files}">
+                        <td>
+                            <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}" class="folder-link">
+                                <i class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
+                                <span th:text="${file.name}">Folder</span>
+                            </a>
+                            <span th:unless="${file.directory}" class="folder-link" style="cursor: default;">
+                                <i class="fas fa-file file-icon" style="color: #94a3b8;"></i>
+                                <span th:text="${file.name}">File</span>
+                            </span>
+                        </td>
+                        <td>
+                            <span th:if="${file.parent != null}" th:text="${file.parent.name}">Parent</span>
+                            <span th:if="${file.parent == null}">/</span>
+                        </td>
+                        <td th:text="${#temporals.format(file.updatedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
+                        <td>
+                            <div class="actions">
+                                <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-download"></i>
+                                </a>
+                                <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                    <i class="fas fa-folder-open"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(files)}">
+                        <td colspan="4" style="text-align: center; color: var(--text-secondary);">
+                            No results found.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+
+</html>

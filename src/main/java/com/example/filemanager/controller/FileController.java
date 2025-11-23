@@ -43,13 +43,20 @@ public class FileController {
   public ResponseEntity<FileResponse> createFolder(@Valid @RequestBody FolderRequest request) {
     FileEntity newDirectory = fileService.createDirectory(request);
 
-    URI location =
-        ServletUriComponentsBuilder.fromCurrentRequest()
-            .path("/{id}")
-            .buildAndExpand(newDirectory.getId())
-            .toUri();
+    URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+        .path("/{id}")
+        .buildAndExpand(newDirectory.getId())
+        .toUri();
 
     return ResponseEntity.created(location).body(new FileResponse(newDirectory));
+  }
+
+  @GetMapping
+  public ResponseEntity<List<FileResponse>> listFiles(
+      @RequestParam(value = "parentId", required = false) Long parentId) {
+    List<FileEntity> files = fileService.listFiles(parentId);
+    List<FileResponse> response = files.stream().map(FileResponse::new).collect(Collectors.toList());
+    return ResponseEntity.ok(response);
   }
 
   @PostMapping
@@ -61,11 +68,10 @@ public class FileController {
 
     FileEntity newFile = fileService.uploadFile(file, parentFolderId, permissions);
 
-    URI location =
-        ServletUriComponentsBuilder.fromCurrentRequest()
-            .path("/{id}")
-            .buildAndExpand(newFile.getId())
-            .toUri();
+    URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+        .path("/{id}")
+        .buildAndExpand(newFile.getId())
+        .toUri();
 
     return ResponseEntity.created(location).body(new FileResponse(newFile));
   }
@@ -83,8 +89,7 @@ public class FileController {
     byte[] data = fileService.downloadFile(fileEntity);
     ByteArrayResource resource = new ByteArrayResource(data);
 
-    String encodedFilename =
-        URLEncoder.encode(fileEntity.getName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+    String encodedFilename = URLEncoder.encode(fileEntity.getName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
 
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_OCTET_STREAM)
@@ -108,16 +113,15 @@ public class FileController {
 
   @PutMapping("/{id}/lock")
   public ResponseEntity<Void> updateLockStatus(@PathVariable Long id, @RequestBody LockRequest lockRequest,
-          @AuthenticationPrincipal UserDetails userDetails) {
-      fileService.updateLockStatus(id, lockRequest.isLocked(), userDetails.getUsername());
-      return ResponseEntity.noContent().build();
+      @AuthenticationPrincipal UserDetails userDetails) {
+    fileService.updateLockStatus(id, lockRequest.isLocked(), userDetails.getUsername());
+    return ResponseEntity.noContent().build();
   }
 
   @GetMapping("/trash")
   public ResponseEntity<List<FileResponse>> getTrash() {
     List<FileEntity> deletedFiles = fileService.listDeletedFiles();
-    List<FileResponse> response =
-        deletedFiles.stream().map(FileResponse::new).collect(Collectors.toList());
+    List<FileResponse> response = deletedFiles.stream().map(FileResponse::new).collect(Collectors.toList());
     return ResponseEntity.ok(response);
   }
 
@@ -132,8 +136,7 @@ public class FileController {
       @RequestParam(value = "name", required = false) String name,
       @RequestParam(value = "tags", required = false) String tags) {
     List<FileEntity> files = fileService.searchFiles(name, tags);
-    List<FileResponse> response =
-        files.stream().map(FileResponse::new).collect(Collectors.toList());
+    List<FileResponse> response = files.stream().map(FileResponse::new).collect(Collectors.toList());
     return ResponseEntity.ok(response);
   }
 
@@ -154,8 +157,7 @@ public class FileController {
   @GetMapping("/{id}/versions")
   public ResponseEntity<List<FileHistoryResponse>> getFileVersions(@PathVariable Long id) {
     List<FileHistory> versions = fileService.getFileVersions(id);
-    List<FileHistoryResponse> response =
-        versions.stream().map(FileHistoryResponse::new).collect(Collectors.toList());
+    List<FileHistoryResponse> response = versions.stream().map(FileHistoryResponse::new).collect(Collectors.toList());
     return ResponseEntity.ok(response);
   }
 

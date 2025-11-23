@@ -27,6 +27,9 @@ public class S3Config {
         return S3Client.builder()
                 .endpointOverride(URI.create(endpointUrl))
                 .region(Region.US_EAST_1) // Region must be set, but it's ignored for Garage
+                .serviceConfiguration(software.amazon.awssdk.services.s3.S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .build())
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
                 .build();
