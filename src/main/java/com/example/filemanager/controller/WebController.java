@@ -10,12 +10,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Controller
 public class WebController {
@@ -199,5 +200,54 @@ public class WebController {
             redirectAttributes.addFlashAttribute("error", "Failed to change permissions: " + e.getMessage());
         }
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @PostMapping("/move/{id}")
+    public String moveFile(
+            @PathVariable Long id,
+            @RequestParam("destinationFolderId") Long destinationFolderId,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.moveFile(id, destinationFolderId);
+            redirectAttributes.addFlashAttribute("message", "File moved successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to move: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @GetMapping("/api/folders")
+    @ResponseBody
+    public List<Map<String, Object>> getFolders() {
+        List<FileEntity> allFiles = fileService.listFiles(null);
+        return getAllFoldersRecursive(allFiles);
+    }
+
+    private List<Map<String, Object>> getAllFoldersRecursive(List<FileEntity> files) {
+        List<Map<String, Object>> folders = new ArrayList<>();
+        for (FileEntity file : files) {
+            if (file.isDirectory()) {
+                Map<String, Object> folderInfo = new HashMap<>();
+                folderInfo.put("id", file.getId());
+                folderInfo.put("name", file.getName());
+                folderInfo.put("path", getFullPath(file));
+                folders.add(folderInfo);
+
+                // Get subfolders
+                List<FileEntity> subFiles = fileService.listFiles(file.getId());
+                folders.addAll(getAllFoldersRecursive(subFiles));
+            }
+        }
+        return folders;
+    }
+
+    private String getFullPath(FileEntity file) {
+        if (file.getParent() == null) {
+            return "/" + file.getName();
+        }
+        return getFullPath(file.getParent()) + "/" + file.getName();
     }
 }

@@ -131,6 +131,12 @@
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
+                                    onclick="openMoveModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                    title="Move">
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
                                 <form th:action="@{'/delete/' + ${file.id}}" method="post"
                                     th:data-filename="${file.name}" th:data-owner="${file.owner.id}"
                                     th:data-permissions="${file.permissions}" th:data-current-user="${currentUser.id}"
@@ -249,6 +255,28 @@
         </div>
     </div>
 
+    <!-- Move Modal -->
+    <div id="moveModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Move File</h2>
+            <p id="moveFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
+            <form id="moveForm" method="post">
+                <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>Destination Folder</label>
+                    <select id="moveDestinationSelect" name="destinationFolderId" class="form-control" required>
+                        <option value="" disabled selected>Select a folder</option>
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('moveModal')" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Move</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Permission Change Modal -->
     <div id="permissionModal" class="modal">
         <div class="modal-content">
@@ -285,6 +313,33 @@
             document.getElementById('renameForm').action = '/rename/' + id;
             document.getElementById('renameInput').value = currentName;
             openModal('renameModal');
+        }
+        function openMoveModal(fileId, fileName) {
+            document.getElementById('moveFileName').textContent = 'Move: ' + fileName;
+            document.getElementById('moveForm').action = '/move/' + fileId;
+
+            // Fetch folders
+            fetch('/api/folders')
+                .then(response => response.json())
+                .then(folders => {
+                    const select = document.getElementById('moveDestinationSelect');
+                    select.innerHTML = '<option value="" disabled selected>Select a folder</option>';
+
+                    folders.forEach(folder => {
+                        // Don't allow moving into itself (if it's a folder)
+                        if (folder.id != fileId) {
+                            const option = document.createElement('option');
+                            option.value = folder.id;
+                            option.textContent = folder.path;
+                            select.appendChild(option);
+                        }
+                    });
+                    openModal('moveModal');
+                })
+                .catch(error => {
+                    console.error('Error fetching folders:', error);
+                    alert('Failed to load folders.');
+                });
         }
         function openPermissionModal(fileId, fileName, currentPermissions) {
             document.getElementById('permissionFileName').textContent = 'File: ' + fileName;
