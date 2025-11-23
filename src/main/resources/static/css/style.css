@@ -38,6 +38,7 @@ h1 {
     font-size: 2rem;
     font-weight: 700;
     background: linear-gradient(to right, var(--accent-color), #818cf8);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
@@ -233,4 +234,14 @@ h1 {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1.5rem;
+}
+
+/* Version history modal specific styles */
+#versionHistoryContent .file-list {
+    font-size: 0.9rem;
+}
+
+#versionHistoryContent .file-list th,
+#versionHistoryContent .file-list td {
+    padding: 0.75rem;
 }
