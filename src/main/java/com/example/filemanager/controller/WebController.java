@@ -354,4 +354,25 @@ public class WebController {
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
     }
 
+    @PostMapping("/tags/{id}")
+    public String updateTags(
+            @PathVariable Long id,
+            @RequestParam("tags") String tags,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.updateTags(id, tags);
+            redirectAttributes.addFlashAttribute("message", "Tags updated successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot update tags: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to update tags: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
 }

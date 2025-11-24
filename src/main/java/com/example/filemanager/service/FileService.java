@@ -627,4 +627,21 @@ public class FileService {
       }
     }
   }
+
+  @Transactional
+  public FileEntity updateTags(Long fileId, String tags) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to modify tags for this file.");
+    }
+
+    checkFileLock(fileEntity, currentUser);
+
+    fileEntity.setCustomTags(tags);
+    return fileRepository.save(fileEntity);
+  }
 }

@@ -176,4 +176,11 @@ public class FileController {
         request.isRecursive());
     return ResponseEntity.ok(new FileResponse(updatedFile));
   }
+
+  @PutMapping("/{id}/tags")
+  public ResponseEntity<FileResponse> updateTags(
+      @PathVariable Long id, @Valid @RequestBody com.example.filemanager.controller.dto.TagsRequest request) {
+    FileEntity updatedFile = fileService.updateTags(id, request.getTags());
+    return ResponseEntity.ok(new FileResponse(updatedFile));
+  }
 }
