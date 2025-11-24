@@ -38,6 +38,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("null")
 class FileServiceTest {
 
   @Mock
@@ -406,7 +407,7 @@ class FileServiceTest {
 
     List<FileEntity> foundFiles = Arrays.asList(file1, file2);
 
-    when(fileRepository.findAll(any(Specification.class))).thenReturn(foundFiles);
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(foundFiles);
     when(permissionService.canRead(file1, testUser)).thenReturn(true);
     when(permissionService.canRead(file2, testUser)).thenReturn(true);
 
@@ -434,7 +435,7 @@ class FileServiceTest {
 
     List<FileEntity> foundFiles = Arrays.asList(file1, file2);
 
-    when(fileRepository.findAll(any(Specification.class))).thenReturn(foundFiles);
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(foundFiles);
     when(permissionService.canRead(file1, testUser)).thenReturn(true);
     when(permissionService.canRead(file2, testUser)).thenReturn(false);
 
@@ -450,7 +451,8 @@ class FileServiceTest {
   void searchFiles_Success_NoResults() {
     setupAuthentication();
     // Given
-    when(fileRepository.findAll(any(Specification.class))).thenReturn(Collections.emptyList());
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any()))
+        .thenReturn(Collections.emptyList());
 
     // When
     List<FileEntity> results = fileService.searchFiles("nonexistent", "whatever");

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.lang.NonNull;
 
 @Service
 @Transactional
@@ -36,7 +37,7 @@ public class UserService implements UserDetailsService {
         this.fileRepository = fileRepository;
     }
 
-    public User createUser(User user, List<Long> groupIds) {
+    public User createUser(@NonNull User user, List<Long> groupIds) {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         if (groupIds != null && !groupIds.isEmpty()) {
             List<Group> groups = groupRepository.findAllById(groupIds);
@@ -45,12 +46,12 @@ public class UserService implements UserDetailsService {
         return userRepository.save(user);
     }
 
-    public User createUser(User user) {
+    public User createUser(@NonNull User user) {
         return createUser(user, null);
     }
 
     @Transactional(readOnly = true)
-    public Optional<User> findUserById(Long id) {
+    public Optional<User> findUserById(@NonNull Long id) {
         return userRepository.findById(id);
     }
 
@@ -59,7 +60,7 @@ public class UserService implements UserDetailsService {
         return userRepository.findAll();
     }
 
-    public User updateUser(Long id, User userDetails, List<Long> groupIds) {
+    public User updateUser(@NonNull Long id, User userDetails, List<Long> groupIds) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
 
@@ -87,11 +88,11 @@ public class UserService implements UserDetailsService {
         return userRepository.save(user);
     }
 
-    public User updateUser(Long id, User userDetails) {
+    public User updateUser(@NonNull Long id, User userDetails) {
         return updateUser(id, userDetails, null);
     }
 
-    public void deleteUser(Long id) {
+    public void deleteUser(@NonNull Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
         if ("admin".equals(user.getUsername())) {
@@ -111,7 +112,7 @@ public class UserService implements UserDetailsService {
         userRepository.deleteById(id);
     }
 
-    public void addUserToGroup(Long userId, Long groupId) {
+    public void addUserToGroup(@NonNull Long userId, @NonNull Long groupId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
         Group group = groupRepository.findById(groupId)
@@ -120,7 +121,7 @@ public class UserService implements UserDetailsService {
         userRepository.save(user);
     }
 
-    public void removeUserFromGroup(Long userId, Long groupId) {
+    public void removeUserFromGroup(@NonNull Long userId, @NonNull Long groupId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
         Group group = groupRepository.findById(groupId)

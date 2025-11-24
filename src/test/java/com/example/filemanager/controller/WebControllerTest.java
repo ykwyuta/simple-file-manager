@@ -6,14 +6,14 @@ import com.example.filemanager.service.FileService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.MediaType;
 
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -24,12 +24,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(WebController.class)
+@SuppressWarnings("null")
 class WebControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockitoBean
     private FileService fileService;
 
     @Test
@@ -79,20 +83,24 @@ class WebControllerTest {
         mockMvc.perform(multipart("/upload")
                 .file(file)
                 .param("permissions", "644")
-                .with(csrf()))
+                .with(java.util.Objects.requireNonNull(csrf())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/"));
 
-        verify(fileService).uploadFile(any(), eq(null), eq("644"));
+        verify(fileService).uploadFile(any(org.springframework.web.multipart.MultipartFile.class), eq(null), eq("644"));
     }
 
     @Test
     @WithMockUser
     void shouldCreateFolder() throws Exception {
+        FolderRequest request = new FolderRequest();
+        request.setName("New Folder");
+        request.setPermissions("755");
+
         mockMvc.perform(post("/folders")
-                .param("name", "New Folder")
-                .param("permissions", "755")
-                .with(csrf()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+                .with(java.util.Objects.requireNonNull(csrf())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/"));
 
@@ -105,7 +113,7 @@ class WebControllerTest {
         Long fileId = 1L;
 
         mockMvc.perform(post("/delete/{id}", fileId)
-                .with(csrf()))
+                .with(java.util.Objects.requireNonNull(csrf())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/"));
 
@@ -133,7 +141,7 @@ class WebControllerTest {
         Long fileId = 1L;
 
         mockMvc.perform(post("/restore/{id}", fileId)
-                .with(csrf()))
+                .with(java.util.Objects.requireNonNull(csrf())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/trash"));
 

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
+import java.util.Objects;
 
 @Controller
 @RequestMapping("/admin/groups")
@@ -29,7 +30,7 @@ public class AdminGroupController {
     @PostMapping
     public String createGroup(@ModelAttribute Group group, RedirectAttributes redirectAttributes) {
         try {
-            groupService.createGroup(group);
+            groupService.createGroup(Objects.requireNonNull(group));
             redirectAttributes.addFlashAttribute("message", "Group created successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to create group: " + e.getMessage());
@@ -41,7 +42,7 @@ public class AdminGroupController {
     public String updateGroup(@PathVariable Long id, @ModelAttribute Group group,
             RedirectAttributes redirectAttributes) {
         try {
-            groupService.updateGroup(id, group);
+            groupService.updateGroup(Objects.requireNonNull(id), group);
             redirectAttributes.addFlashAttribute("message", "Group updated successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to update group: " + e.getMessage());
@@ -52,7 +53,7 @@ public class AdminGroupController {
     @PostMapping("/{id}/delete")
     public String deleteGroup(@PathVariable Long id, RedirectAttributes redirectAttributes) {
         try {
-            groupService.deleteGroup(id);
+            groupService.deleteGroup(Objects.requireNonNull(id));
             redirectAttributes.addFlashAttribute("message", "Group deleted successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to delete group: " + e.getMessage());

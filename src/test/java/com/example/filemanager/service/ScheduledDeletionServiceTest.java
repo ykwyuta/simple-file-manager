@@ -15,11 +15,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("null")
 class ScheduledDeletionServiceTest {
 
     @Mock
@@ -85,11 +85,11 @@ class ScheduledDeletionServiceTest {
         fileToDelete.setDeletedAt(LocalDateTime.now().minusDays(RETENTION_DAYS + 1));
 
         when(fileRepository.findAllByDeletedAtBefore(any(LocalDateTime.class)))
-            .thenReturn(List.of(fileToDelete));
+                .thenReturn(List.of(fileToDelete));
 
         // Simulate S3 deletion failure
         doThrow(new RuntimeException("S3 is unavailable"))
-            .when(s3Template).deleteObject(BUCKET_NAME, "s3-key-fail");
+                .when(s3Template).deleteObject(BUCKET_NAME, "s3-key-fail");
 
         // When
         scheduledDeletionService.performScheduledDeletion();
@@ -106,7 +106,7 @@ class ScheduledDeletionServiceTest {
     void performScheduledDeletion_NoFilesToDelete() {
         // Given
         when(fileRepository.findAllByDeletedAtBefore(any(LocalDateTime.class)))
-            .thenReturn(Collections.emptyList());
+                .thenReturn(Collections.emptyList());
 
         // When
         scheduledDeletionService.performScheduledDeletion();
@@ -117,7 +117,7 @@ class ScheduledDeletionServiceTest {
         verify(fileRepository, never()).delete(any(FileEntity.class));
     }
 
-     @Test
+    @Test
     void performScheduledDeletion_FileHasNoStorageKey_SkipsS3Delete() {
         // Given
         FileEntity fileWithoutKey = new FileEntity();
@@ -128,7 +128,7 @@ class ScheduledDeletionServiceTest {
         fileWithoutKey.setDeletedAt(LocalDateTime.now().minusDays(RETENTION_DAYS + 1));
 
         when(fileRepository.findAllByDeletedAtBefore(any(LocalDateTime.class)))
-            .thenReturn(List.of(fileWithoutKey));
+                .thenReturn(List.of(fileWithoutKey));
 
         // When
         scheduledDeletionService.performScheduledDeletion();

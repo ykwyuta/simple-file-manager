@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.lang.NonNull;
 
 @Service
 @Transactional
@@ -23,12 +24,12 @@ public class GroupService {
         this.fileRepository = fileRepository;
     }
 
-    public Group createGroup(Group group) {
+    public Group createGroup(@NonNull Group group) {
         return groupRepository.save(group);
     }
 
     @Transactional(readOnly = true)
-    public Optional<Group> findGroupById(Long id) {
+    public Optional<Group> findGroupById(@NonNull Long id) {
         return groupRepository.findById(id);
     }
 
@@ -37,7 +38,7 @@ public class GroupService {
         return groupRepository.findAll();
     }
 
-    public Group updateGroup(Long id, Group groupDetails) {
+    public Group updateGroup(@NonNull Long id, Group groupDetails) {
         Group group = groupRepository.findById(id)
                 .orElseThrow(() -> new GroupNotFoundException("Group not found with id: " + id));
         if ("admins".equals(group.getName()) && !"admins".equals(groupDetails.getName())) {
@@ -47,7 +48,7 @@ public class GroupService {
         return groupRepository.save(group);
     }
 
-    public void deleteGroup(Long id) {
+    public void deleteGroup(@NonNull Long id) {
         Group group = groupRepository.findById(id)
                 .orElseThrow(() -> new GroupNotFoundException("Group not found with id: " + id));
         if ("admins".equals(group.getName())) {
