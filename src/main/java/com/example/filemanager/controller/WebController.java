@@ -338,10 +338,11 @@ public class WebController {
             @PathVariable Long id,
             @RequestParam("ownerUserId") Long ownerUserId,
             @RequestParam("ownerGroupId") Long ownerGroupId,
+            @RequestParam(value = "recursive", defaultValue = "false") boolean recursive,
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.changeOwner(id, ownerUserId, ownerGroupId);
+            fileService.changeOwner(id, ownerUserId, ownerGroupId, recursive);
             redirectAttributes.addFlashAttribute("message", "Owner/Group changed successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());

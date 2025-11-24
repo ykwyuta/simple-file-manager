@@ -583,7 +583,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity changeOwner(Long fileId, Long newOwnerId, Long newGroupId) {
+  public FileEntity changeOwner(Long fileId, Long newOwnerId, Long newGroupId, boolean recursive) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
     // Check if current user is admin
@@ -607,6 +607,24 @@ public class FileService {
     fileEntity.setOwner(newOwner);
     fileEntity.setGroup(newGroup);
 
-    return fileRepository.save(fileEntity);
+    FileEntity savedFile = fileRepository.save(fileEntity);
+
+    if (recursive && fileEntity.isDirectory()) {
+      changeOwnerRecursive(fileEntity, newOwner, newGroup);
+    }
+
+    return savedFile;
+  }
+
+  private void changeOwnerRecursive(FileEntity parent, User newOwner, Group newGroup) {
+    List<FileEntity> children = fileRepository.findAllByParentAndDeletedAtIsNull(parent);
+    for (FileEntity child : children) {
+      child.setOwner(newOwner);
+      child.setGroup(newGroup);
+      fileRepository.save(child);
+      if (child.isDirectory()) {
+        changeOwnerRecursive(child, newOwner, newGroup);
+      }
+    }
   }
 }

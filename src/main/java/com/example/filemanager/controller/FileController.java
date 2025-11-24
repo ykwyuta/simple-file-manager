@@ -172,7 +172,8 @@ public class FileController {
   @PutMapping("/{id}/owner")
   public ResponseEntity<FileResponse> changeOwner(
       @PathVariable Long id, @Valid @RequestBody ChangeOwnerRequest request) {
-    FileEntity updatedFile = fileService.changeOwner(id, request.getOwnerUserId(), request.getOwnerGroupId());
+    FileEntity updatedFile = fileService.changeOwner(id, request.getOwnerUserId(), request.getOwnerGroupId(),
+        request.isRecursive());
     return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 }
