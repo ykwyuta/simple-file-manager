@@ -153,6 +153,12 @@
                                     title="Move">
                                     <i class="fas fa-arrow-right"></i>
                                 </button>
+                                <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
+                                    onclick="openChangeOwnerModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                    title="Change Owner/Group">
+                                    <i class="fas fa-user-edit"></i>
+                                </button>
                                 <form
                                     th:if="${currentFolder != null && currentFolder.versioningEnabled && !file.directory}"
                                     th:action="@{'/files/' + ${file.id} + '/lock'}" method="post"
@@ -370,6 +376,36 @@
         </div>
     </div>
 
+    <!-- Change Owner Modal -->
+    <div id="changeOwnerModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-top: 0;">Change Owner/Group</h2>
+            <p id="changeOwnerFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
+            <form id="changeOwnerForm" method="post">
+                <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
+                <div class="form-group">
+                    <label>New Owner</label>
+                    <select id="changeOwnerUserSelect" name="ownerUserId" class="form-control" required>
+                        <option value="" disabled selected>Select a user</option>
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>New Group</label>
+                    <select id="changeOwnerGroupSelect" name="ownerGroupId" class="form-control" required>
+                        <option value="" disabled selected>Select a group</option>
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button type="button" onclick="closeModal('changeOwnerModal')"
+                        class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Change</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Hidden field for current user ID -->
     <input type="hidden" id="currentUserId" th:value="${currentUser.id}">
 
@@ -509,6 +545,40 @@
                     console.error('Error fetching folders:', error);
                     alert('Failed to load folders.');
                 });
+        }
+        function openChangeOwnerModal(fileId, fileName) {
+            document.getElementById('changeOwnerFileName').textContent = 'File: ' + fileName;
+            document.getElementById('changeOwnerForm').action = '/chown/' + fileId;
+
+            // Fetch users
+            fetch('/api/users')
+                .then(response => response.json())
+                .then(users => {
+                    const select = document.getElementById('changeOwnerUserSelect');
+                    select.innerHTML = '<option value="" disabled selected>Select a user</option>';
+                    users.forEach(user => {
+                        const option = document.createElement('option');
+                        option.value = user.id;
+                        option.textContent = user.username;
+                        select.appendChild(option);
+                    });
+                });
+
+            // Fetch groups
+            fetch('/api/groups')
+                .then(response => response.json())
+                .then(groups => {
+                    const select = document.getElementById('changeOwnerGroupSelect');
+                    select.innerHTML = '<option value="" disabled selected>Select a group</option>';
+                    groups.forEach(group => {
+                        const option = document.createElement('option');
+                        option.value = group.id;
+                        option.textContent = group.name;
+                        select.appendChild(option);
+                    });
+                });
+
+            openModal('changeOwnerModal');
         }
         function openPermissionModal(fileId, fileName, currentPermissions) {
             document.getElementById('permissionFileName').textContent = 'File: ' + fileName;

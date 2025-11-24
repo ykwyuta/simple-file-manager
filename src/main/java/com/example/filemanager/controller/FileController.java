@@ -7,6 +7,7 @@ import com.example.filemanager.controller.dto.MoveRequest;
 import com.example.filemanager.controller.dto.LockRequest;
 import com.example.filemanager.controller.dto.RenameRequest;
 import com.example.filemanager.controller.dto.VersioningRequest;
+import com.example.filemanager.controller.dto.ChangeOwnerRequest;
 import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.domain.FileHistory;
 import com.example.filemanager.service.FileService;
@@ -166,5 +167,12 @@ public class FileController {
       @PathVariable Long id, @PathVariable Long versionId) {
     FileEntity restoredFile = fileService.restoreFileVersion(id, versionId);
     return ResponseEntity.ok(new FileResponse(restoredFile));
+  }
+
+  @PutMapping("/{id}/owner")
+  public ResponseEntity<FileResponse> changeOwner(
+      @PathVariable Long id, @Valid @RequestBody ChangeOwnerRequest request) {
+    FileEntity updatedFile = fileService.changeOwner(id, request.getOwnerUserId(), request.getOwnerGroupId());
+    return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 }

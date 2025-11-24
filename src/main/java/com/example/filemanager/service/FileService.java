@@ -13,6 +13,7 @@ import com.example.filemanager.exception.ResourceNotFoundException;
 import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.FileSpecification;
+import com.example.filemanager.repository.GroupRepository;
 import com.example.filemanager.repository.UserRepository;
 import io.awspring.cloud.s3.S3Template;
 import java.io.IOException;
@@ -41,6 +42,7 @@ public class FileService {
   private final S3Template s3Template;
   private final PermissionService permissionService;
   private final UserRepository userRepository;
+  private final GroupRepository groupRepository;
 
   @Value("${S3_BUCKET_NAME}")
   private String bucketName;
@@ -50,12 +52,14 @@ public class FileService {
       FileHistoryRepository fileHistoryRepository,
       S3Template s3Template,
       PermissionService permissionService,
-      UserRepository userRepository) {
+      UserRepository userRepository,
+      GroupRepository groupRepository) {
     this.fileRepository = fileRepository;
     this.fileHistoryRepository = fileHistoryRepository;
     this.s3Template = s3Template;
     this.permissionService = permissionService;
     this.userRepository = userRepository;
+    this.groupRepository = groupRepository;
   }
 
   @Transactional
@@ -576,5 +580,33 @@ public class FileService {
     if (fileEntity.isLocked() && (fileEntity.getLockedBy() == null || !fileEntity.getLockedBy().equals(currentUser))) {
       throw new FileLockedException("File is locked by another user and cannot be modified.");
     }
+  }
+
+  @Transactional
+  public FileEntity changeOwner(Long fileId, Long newOwnerId, Long newGroupId) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+    // Check if current user is admin
+    boolean isAdmin = currentUser.getGroups().stream()
+        .anyMatch(g -> "admins".equals(g.getName()));
+
+    if (!isAdmin) {
+      throw new AccessDeniedException("Only admins can change file ownership.");
+    }
+
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    User newOwner = userRepository.findById(newOwnerId)
+        .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + newOwnerId));
+
+    Group newGroup = groupRepository.findById(newGroupId)
+        .orElseThrow(() -> new ResourceNotFoundException("Group not found with id: " + newGroupId));
+
+    fileEntity.setOwner(newOwner);
+    fileEntity.setGroup(newGroup);
+
+    return fileRepository.save(fileEntity);
   }
 }

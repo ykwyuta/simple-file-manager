@@ -85,4 +85,12 @@ public interface FileRepository extends JpaRepository<FileEntity, Long>, JpaSpec
      * @return A list of FileEntity objects owned by the specified user.
      */
     List<FileEntity> findAllByOwner(com.example.filemanager.domain.User owner);
+
+    /**
+     * Finds all files owned by a specific group (including soft-deleted ones).
+     *
+     * @param group The owner group entity.
+     * @return A list of FileEntity objects owned by the specified group.
+     */
+    List<FileEntity> findAllByGroup(com.example.filemanager.domain.Group group);
 }

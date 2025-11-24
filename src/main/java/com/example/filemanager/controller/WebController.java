@@ -333,4 +333,24 @@ public class WebController {
         return getFullPath(file.getParent()) + "/" + file.getName();
     }
 
+    @PostMapping("/chown/{id}")
+    public String changeOwner(
+            @PathVariable Long id,
+            @RequestParam("ownerUserId") Long ownerUserId,
+            @RequestParam("ownerGroupId") Long ownerGroupId,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.changeOwner(id, ownerUserId, ownerGroupId);
+            redirectAttributes.addFlashAttribute("message", "Owner/Group changed successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "Resource not found: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to change owner/group: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
 }
