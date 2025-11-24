@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
+import java.util.Objects;
 
 @Controller
 @RequestMapping("/admin/users")
@@ -36,7 +37,7 @@ public class AdminController {
     public String createUser(@ModelAttribute User user, @RequestParam(required = false) List<Long> groupIds,
             RedirectAttributes redirectAttributes) {
         try {
-            userService.createUser(user, groupIds);
+            userService.createUser(Objects.requireNonNull(user), groupIds);
             redirectAttributes.addFlashAttribute("message", "User created successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to create user: " + e.getMessage());
@@ -48,7 +49,7 @@ public class AdminController {
     public String updateUser(@PathVariable Long id, @ModelAttribute User user,
             @RequestParam(required = false) List<Long> groupIds, RedirectAttributes redirectAttributes) {
         try {
-            userService.updateUser(id, user, groupIds);
+            userService.updateUser(Objects.requireNonNull(id), user, groupIds);
             redirectAttributes.addFlashAttribute("message", "User updated successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to update user: " + e.getMessage());
@@ -59,7 +60,7 @@ public class AdminController {
     @PostMapping("/{id}/delete")
     public String deleteUser(@PathVariable Long id, RedirectAttributes redirectAttributes) {
         try {
-            userService.deleteUser(id);
+            userService.deleteUser(Objects.requireNonNull(id));
             redirectAttributes.addFlashAttribute("message", "User deleted successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Failed to delete user: " + e.getMessage());

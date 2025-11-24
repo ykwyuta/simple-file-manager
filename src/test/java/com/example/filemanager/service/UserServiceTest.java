@@ -1,7 +1,9 @@
 package com.example.filemanager.service;
 
+import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
+import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.GroupRepository;
 import com.example.filemanager.exception.UserNotFoundException;
 import com.example.filemanager.repository.UserRepository;
@@ -9,16 +11,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("null")
 class UserServiceTest {
 
     @Mock
@@ -30,7 +33,9 @@ class UserServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
-    @InjectMocks
+    @Mock
+    private FileRepository fileRepository;
+
     private UserService userService;
 
     private User user;
@@ -38,6 +43,8 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
+        userService = new UserService(userRepository, groupRepository, passwordEncoder, fileRepository);
+
         user = new User();
         user.setId(1L);
         user.setUsername("testuser");
@@ -129,9 +136,61 @@ class UserServiceTest {
     }
 
     @Test
-    void deleteUser() {
+    void deleteUser_shouldTransferOwnershipToAdmin() {
+        // Setup
+        User adminUser = new User();
+        adminUser.setId(999L);
+        adminUser.setUsername("admin");
+
+        FileEntity file1 = new FileEntity();
+        file1.setId(1L);
+        file1.setName("file1.txt");
+        file1.setOwner(user);
+
+        FileEntity file2 = new FileEntity();
+        file2.setId(2L);
+        file2.setName("file2.txt");
+        file2.setOwner(user);
+
+        List<FileEntity> ownedFiles = List.of(file1, file2);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
+        when(fileRepository.findAllByOwner(user)).thenReturn(ownedFiles);
+
+        // Execute
         userService.deleteUser(1L);
+
+        // Verify
+        verify(userRepository, times(1)).findById(1L);
+        verify(userRepository, times(1)).findByUsername("admin");
+        verify(fileRepository, times(1)).findAllByOwner(user);
+        verify(fileRepository, times(2)).save(any(FileEntity.class));
         verify(userRepository, times(1)).deleteById(1L);
+
+        // Verify ownership was transferred
+        assertEquals(adminUser, file1.getOwner());
+        assertEquals(adminUser, file2.getOwner());
+    }
+
+    @Test
+    void deleteUser_whenAdminUser_shouldThrowException() {
+        User adminUser = new User();
+        adminUser.setId(999L);
+        adminUser.setUsername("admin");
+
+        when(userRepository.findById(999L)).thenReturn(Optional.of(adminUser));
+
+        assertThrows(IllegalArgumentException.class, () -> userService.deleteUser(999L));
+        verify(userRepository, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void deleteUser_whenUserNotFound_shouldThrowException() {
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThrows(UserNotFoundException.class, () -> userService.deleteUser(1L));
+        verify(userRepository, never()).deleteById(anyLong());
     }
 
     @Test

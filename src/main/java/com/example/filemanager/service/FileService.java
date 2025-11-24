@@ -13,6 +13,7 @@ import com.example.filemanager.exception.ResourceNotFoundException;
 import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.FileSpecification;
+import com.example.filemanager.repository.GroupRepository;
 import com.example.filemanager.repository.UserRepository;
 import io.awspring.cloud.s3.S3Template;
 import java.io.IOException;
@@ -32,6 +33,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.lang.NonNull;
+import java.util.Objects;
 
 @Service
 public class FileService {
@@ -41,25 +44,29 @@ public class FileService {
   private final S3Template s3Template;
   private final PermissionService permissionService;
   private final UserRepository userRepository;
+  private final GroupRepository groupRepository;
 
-  @Value("${S3_BUCKET_NAME}")
-  private String bucketName;
+  private final String bucketName;
 
   public FileService(
       FileRepository fileRepository,
       FileHistoryRepository fileHistoryRepository,
       S3Template s3Template,
       PermissionService permissionService,
-      UserRepository userRepository) {
+      UserRepository userRepository,
+      GroupRepository groupRepository,
+      @Value("${S3_BUCKET_NAME}") String bucketName) {
     this.fileRepository = fileRepository;
     this.fileHistoryRepository = fileHistoryRepository;
     this.s3Template = s3Template;
     this.permissionService = permissionService;
     this.userRepository = userRepository;
+    this.groupRepository = groupRepository;
+    this.bucketName = bucketName;
   }
 
   @Transactional
-  public FileEntity uploadFile(MultipartFile file, Long parentFolderId, String permissions)
+  public FileEntity uploadFile(@NonNull MultipartFile file, Long parentFolderId, @NonNull String permissions)
       throws IOException {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
@@ -111,15 +118,16 @@ public class FileService {
           "Invalid permission format. Please use a 3-digit number (e.g., '755').");
     }
 
-    String s3Key = UUID.randomUUID() + "/" + file.getOriginalFilename();
-    s3Template.upload(bucketName, s3Key, file.getInputStream());
+    String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
+    String s3Key = UUID.randomUUID() + "/" + originalFilename;
+    s3Template.upload(Objects.requireNonNull(bucketName), s3Key, file.getInputStream());
     newFile.setStorageKey(s3Key);
 
     return fileRepository.save(newFile);
   }
 
   @Transactional
-  public FileEntity updateFile(Long fileId, MultipartFile file) throws IOException {
+  public FileEntity updateFile(@NonNull Long fileId, @NonNull MultipartFile file) throws IOException {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = findFileById(fileId); // This already checks read permission
 
@@ -152,20 +160,22 @@ public class FileService {
       fileHistoryRepository.save(history);
 
       // Upload new file to S3 with a new key
-      String newS3Key = UUID.randomUUID() + "/" + file.getOriginalFilename();
-      s3Template.upload(bucketName, newS3Key, file.getInputStream());
+      String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
+      String newS3Key = UUID.randomUUID() + "/" + originalFilename;
+      s3Template.upload(Objects.requireNonNull(bucketName), newS3Key, file.getInputStream());
       fileEntity.setStorageKey(newS3Key); // Update entity with the new key
     } else {
       // Versioning is not enabled, just overwrite the file in S3
-      s3Template.upload(bucketName, fileEntity.getStorageKey(), file.getInputStream());
+      s3Template.upload(Objects.requireNonNull(bucketName), Objects.requireNonNull(fileEntity.getStorageKey()),
+          file.getInputStream());
     }
 
     // Update the name in case it has changed
-    fileEntity.setName(file.getOriginalFilename());
+    fileEntity.setName(Objects.requireNonNull(file.getOriginalFilename()));
     return fileRepository.save(fileEntity);
   }
 
-  public byte[] downloadFile(FileEntity fileEntity) throws IOException {
+  public byte[] downloadFile(@NonNull FileEntity fileEntity) throws IOException {
     if (fileEntity.isDirectory()) {
       throw new IllegalArgumentException("Cannot download a directory.");
     }
@@ -173,11 +183,13 @@ public class FileService {
       // This case should ideally not happen for a file, but as a safeguard:
       throw new IllegalStateException("File entity is missing storage key.");
     }
-    return s3Template.download(bucketName, fileEntity.getStorageKey()).getInputStream().readAllBytes();
+    return s3Template.download(Objects.requireNonNull(bucketName), Objects.requireNonNull(fileEntity.getStorageKey()))
+        .getInputStream()
+        .readAllBytes();
   }
 
   @Transactional(readOnly = true)
-  public FileEntity findFileById(Long fileId) {
+  public FileEntity findFileById(@NonNull Long fileId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
@@ -211,7 +223,7 @@ public class FileService {
   }
 
   @Transactional(readOnly = true)
-  public Page<FileEntity> listFiles(Long parentId, Pageable pageable) {
+  public Page<FileEntity> listFiles(Long parentId, @NonNull Pageable pageable) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity parent = null;
     if (parentId != null) {
@@ -231,11 +243,11 @@ public class FileService {
         .filter(file -> permissionService.canRead(file, currentUser))
         .collect(Collectors.toList());
 
-    return new PageImpl<>(filteredFiles, pageable, filesPage.getTotalElements());
+    return new PageImpl<>(Objects.requireNonNull(filteredFiles), pageable, filesPage.getTotalElements());
   }
 
   @Transactional
-  public FileEntity createDirectory(FolderRequest request) {
+  public FileEntity createDirectory(@NonNull FolderRequest request) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
     FileEntity parent = null;
@@ -288,7 +300,7 @@ public class FileService {
   }
 
   @Transactional
-  public void softDeleteFile(Long fileId) {
+  public void softDeleteFile(@NonNull Long fileId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
@@ -305,7 +317,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity renameFile(Long fileId, String newName) {
+  public FileEntity renameFile(@NonNull Long fileId, @NonNull String newName) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
@@ -334,7 +346,7 @@ public class FileService {
   @Transactional(readOnly = true)
   public List<FileEntity> searchFiles(String name, String tags) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    Specification<FileEntity> spec = Specification.where(FileSpecification.isNotDeleted());
+    Specification<FileEntity> spec = FileSpecification.isNotDeleted();
 
     if (StringUtils.hasText(name)) {
       spec = spec.and(FileSpecification.nameContains(name));
@@ -351,7 +363,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity moveFile(Long fileId, Long newParentId) {
+  public FileEntity moveFile(@NonNull Long fileId, @NonNull Long newParentId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileToMove = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
@@ -404,7 +416,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity restoreFile(Long fileId) {
+  public FileEntity restoreFile(@NonNull Long fileId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNotNull(fileId)
@@ -421,7 +433,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity toggleVersioning(Long folderId, boolean enable) {
+  public FileEntity toggleVersioning(@NonNull Long folderId, boolean enable) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity folder = findFileById(folderId); // This checks for existence and read permission
 
@@ -438,8 +450,8 @@ public class FileService {
   }
 
   @Transactional(readOnly = true)
-  public List<FileHistory> getFileVersions(Long fileId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+  public List<FileHistory> getFileVersions(@NonNull Long fileId) {
+
     FileEntity fileEntity = findFileById(fileId); // Checks read permission
 
     if (fileEntity.isDirectory()) {
@@ -450,7 +462,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity restoreFileVersion(Long fileId, Long versionId) {
+  public FileEntity restoreFileVersion(@NonNull Long fileId, @NonNull Long versionId) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = findFileById(fileId); // Checks read permission
 
@@ -484,7 +496,7 @@ public class FileService {
   }
 
   @Transactional
-  public void updateLockStatus(Long fileId, boolean lock, String username) {
+  public void updateLockStatus(@NonNull Long fileId, boolean lock, @NonNull String username) {
     User currentUser = userRepository.findByUsername(username)
         .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
     FileEntity fileEntity = findFileById(fileId);
@@ -528,7 +540,7 @@ public class FileService {
   }
 
   @Transactional
-  public FileEntity changePermissions(Long fileId, String newPermissions) {
+  public FileEntity changePermissions(@NonNull Long fileId, @NonNull String newPermissions) {
     User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
@@ -576,5 +588,69 @@ public class FileService {
     if (fileEntity.isLocked() && (fileEntity.getLockedBy() == null || !fileEntity.getLockedBy().equals(currentUser))) {
       throw new FileLockedException("File is locked by another user and cannot be modified.");
     }
+  }
+
+  @Transactional
+  public FileEntity changeOwner(@NonNull Long fileId, @NonNull Long newOwnerId, @NonNull Long newGroupId,
+      boolean recursive) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+    // Check if current user is admin
+    boolean isAdmin = currentUser.getGroups().stream()
+        .anyMatch(g -> "admins".equals(g.getName()));
+
+    if (!isAdmin) {
+      throw new AccessDeniedException("Only admins can change file ownership.");
+    }
+
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    User newOwner = userRepository.findById(newOwnerId)
+        .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + newOwnerId));
+
+    Group newGroup = groupRepository.findById(newGroupId)
+        .orElseThrow(() -> new ResourceNotFoundException("Group not found with id: " + newGroupId));
+
+    fileEntity.setOwner(newOwner);
+    fileEntity.setGroup(newGroup);
+
+    FileEntity savedFile = fileRepository.save(fileEntity);
+
+    if (recursive && fileEntity.isDirectory()) {
+      changeOwnerRecursive(fileEntity, newOwner, newGroup);
+    }
+
+    return savedFile;
+  }
+
+  private void changeOwnerRecursive(FileEntity parent, User newOwner, Group newGroup) {
+    List<FileEntity> children = fileRepository.findAllByParentAndDeletedAtIsNull(parent);
+    for (FileEntity child : children) {
+      child.setOwner(newOwner);
+      child.setGroup(newGroup);
+      fileRepository.save(child);
+      if (child.isDirectory()) {
+        changeOwnerRecursive(child, newOwner, newGroup);
+      }
+    }
+  }
+
+  @Transactional
+  public FileEntity updateTags(@NonNull Long fileId, @NonNull String tags) {
+    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    FileEntity fileEntity = fileRepository
+        .findByIdAndDeletedAtIsNull(fileId)
+        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+
+    if (!permissionService.canWrite(fileEntity, currentUser)) {
+      throw new AccessDeniedException("You do not have permission to modify tags for this file.");
+    }
+
+    checkFileLock(fileEntity, currentUser);
+
+    fileEntity.setCustomTags(tags);
+    return fileRepository.save(fileEntity);
   }
 }

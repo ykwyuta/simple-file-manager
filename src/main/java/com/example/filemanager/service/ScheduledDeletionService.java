@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.lang.NonNull;
 
 @Service
 public class ScheduledDeletionService {
@@ -20,15 +21,16 @@ public class ScheduledDeletionService {
     private final FileRepository fileRepository;
     private final S3Template s3Template;
 
-    @Value("${S3_BUCKET_NAME}")
-    private String bucketName;
+    private final String bucketName;
 
     @Value("${file.deletion.retention-period-days:7}")
     private int retentionPeriodDays;
 
-    public ScheduledDeletionService(FileRepository fileRepository, S3Template s3Template) {
+    public ScheduledDeletionService(FileRepository fileRepository, S3Template s3Template,
+            @Value("${S3_BUCKET_NAME}") @NonNull String bucketName) {
         this.fileRepository = fileRepository;
         this.s3Template = s3Template;
+        this.bucketName = bucketName;
     }
 
     @Scheduled(cron = "${file.deletion.cron:0 0 2 * * *}") // Defaults to 2 AM daily
@@ -50,18 +52,21 @@ public class ScheduledDeletionService {
             // Delete from S3 only if it's a file and has a storage key
             if (!file.isDirectory() && file.getStorageKey() != null && !file.getStorageKey().isEmpty()) {
                 try {
-                    s3Template.deleteObject(bucketName, file.getStorageKey());
-                    logger.info("Successfully deleted file '{}' from S3 with key: {}", file.getName(), file.getStorageKey());
+                    s3Template.deleteObject(java.util.Objects.requireNonNull(bucketName),
+                            java.util.Objects.requireNonNull(file.getStorageKey()));
+                    logger.info("Successfully deleted file '{}' from S3 with key: {}", file.getName(),
+                            file.getStorageKey());
                 } catch (Exception e) {
                     logger.error("Failed to delete file '{}' (key: {}) from S3. Skipping database deletion.",
-                                 file.getName(), file.getStorageKey(), e);
+                            file.getName(), file.getStorageKey(), e);
                     // If S3 deletion fails, we skip DB deletion to retry later
                     continue;
                 }
             }
             // Delete from database
             fileRepository.delete(file);
-            logger.info("Successfully deleted file metadata for '{}' (ID: {}) from database.", file.getName(), file.getId());
+            logger.info("Successfully deleted file metadata for '{}' (ID: {}) from database.", file.getName(),
+                    file.getId());
         }
 
         logger.info("Scheduled deletion job finished.");

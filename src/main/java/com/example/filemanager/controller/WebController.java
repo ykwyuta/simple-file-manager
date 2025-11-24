@@ -2,10 +2,13 @@ package com.example.filemanager.controller;
 
 import com.example.filemanager.controller.dto.FolderRequest;
 import com.example.filemanager.domain.FileEntity;
+import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
 import com.example.filemanager.service.FileService;
+import com.example.filemanager.service.GroupService;
+import com.example.filemanager.service.UserService;
 import java.io.IOException;
-import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,14 +28,19 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Controller
 public class WebController {
 
     private final FileService fileService;
+    private final UserService userService;
+    private final GroupService groupService;
 
-    public WebController(FileService fileService) {
+    public WebController(FileService fileService, UserService userService, GroupService groupService) {
         this.fileService = fileService;
+        this.userService = userService;
+        this.groupService = groupService;
     }
 
     @GetMapping("/")
@@ -72,7 +80,7 @@ public class WebController {
             @RequestParam(value = "permissions", defaultValue = "644") String permissions,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.uploadFile(file, parentFolderId, permissions);
+            fileService.uploadFile(Objects.requireNonNull(file), parentFolderId, Objects.requireNonNull(permissions));
             redirectAttributes.addFlashAttribute("message", "File uploaded successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
@@ -122,7 +130,7 @@ public class WebController {
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.softDeleteFile(id);
+            fileService.softDeleteFile(Objects.requireNonNull(id));
             redirectAttributes.addFlashAttribute("message", "File deleted successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
@@ -147,7 +155,7 @@ public class WebController {
     @PostMapping("/restore/{id}")
     public String restoreFile(@PathVariable Long id, RedirectAttributes redirectAttributes) {
         try {
-            fileService.restoreFile(id);
+            fileService.restoreFile(Objects.requireNonNull(id));
             redirectAttributes.addFlashAttribute("message", "File restored successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
@@ -178,7 +186,7 @@ public class WebController {
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.renameFile(id, name);
+            fileService.renameFile(Objects.requireNonNull(id), Objects.requireNonNull(name));
             redirectAttributes.addFlashAttribute("message", "File renamed successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error",
@@ -201,7 +209,7 @@ public class WebController {
             @RequestParam("enabled") boolean enabled,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.toggleVersioning(id, enabled);
+            fileService.toggleVersioning(Objects.requireNonNull(id), enabled);
             String status = enabled ? "enabled" : "disabled";
             redirectAttributes.addFlashAttribute("message", "Versioning " + status + " successfully!");
         } catch (AccessDeniedException e) {
@@ -224,7 +232,7 @@ public class WebController {
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.restoreFileVersion(id, versionId);
+            fileService.restoreFileVersion(Objects.requireNonNull(id), Objects.requireNonNull(versionId));
             redirectAttributes.addFlashAttribute("message", "File version restored successfully!");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());
@@ -239,7 +247,7 @@ public class WebController {
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.changePermissions(id, permissions);
+            fileService.changePermissions(Objects.requireNonNull(id), Objects.requireNonNull(permissions));
             redirectAttributes.addFlashAttribute("message", "Permissions changed successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: Only the owner can change permissions.");
@@ -260,7 +268,7 @@ public class WebController {
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.moveFile(id, destinationFolderId);
+            fileService.moveFile(Objects.requireNonNull(id), Objects.requireNonNull(destinationFolderId));
             redirectAttributes.addFlashAttribute("message", "File moved successfully!");
         } catch (AccessDeniedException e) {
             redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
@@ -286,7 +294,8 @@ public class WebController {
             @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
             RedirectAttributes redirectAttributes) {
         try {
-            fileService.updateLockStatus(id, locked, currentUser.getUsername());
+            fileService.updateLockStatus(Objects.requireNonNull(id), locked,
+                    Objects.requireNonNull(currentUser.getUsername()));
             String status = locked ? "locked" : "unlocked";
             redirectAttributes.addFlashAttribute("message", "File " + status + " successfully!");
         } catch (AccessDeniedException e) {
@@ -331,6 +340,77 @@ public class WebController {
             return "/" + file.getName();
         }
         return getFullPath(file.getParent()) + "/" + file.getName();
+    }
+
+    @PostMapping("/chown/{id}")
+    public String changeOwner(
+            @PathVariable Long id,
+            @RequestParam("ownerUserId") Long ownerUserId,
+            @RequestParam("ownerGroupId") Long ownerGroupId,
+            @RequestParam(value = "recursive", defaultValue = "false") boolean recursive,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.changeOwner(Objects.requireNonNull(id), Objects.requireNonNull(ownerUserId),
+                    Objects.requireNonNull(ownerGroupId), recursive);
+            redirectAttributes.addFlashAttribute("message", "Owner/Group changed successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "Resource not found: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to change owner/group: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @PostMapping("/tags/{id}")
+    public String updateTags(
+            @PathVariable Long id,
+            @RequestParam("tags") String tags,
+            @RequestParam(value = "currentFolderId", required = false) Long currentFolderId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            fileService.updateTags(Objects.requireNonNull(id), Objects.requireNonNull(tags));
+            redirectAttributes.addFlashAttribute("message", "Tags updated successfully!");
+        } catch (AccessDeniedException e) {
+            redirectAttributes.addFlashAttribute("error", "Permission denied: " + e.getMessage());
+        } catch (FileLockedException e) {
+            redirectAttributes.addFlashAttribute("error", "Cannot update tags: " + e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            redirectAttributes.addFlashAttribute("error", "File not found: " + e.getMessage());
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Failed to update tags: " + e.getMessage());
+        }
+        return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @GetMapping("/web/api/users")
+    @ResponseBody
+    public List<Map<String, Object>> getUsers() {
+        List<User> users = userService.findAllUsers();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (User user : users) {
+            Map<String, Object> userInfo = new HashMap<>();
+            userInfo.put("id", user.getId());
+            userInfo.put("username", user.getUsername());
+            result.add(userInfo);
+        }
+        return result;
+    }
+
+    @GetMapping("/web/api/groups")
+    @ResponseBody
+    public List<Map<String, Object>> getGroups() {
+        List<Group> groups = groupService.findAllGroups();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Group group : groups) {
+            Map<String, Object> groupInfo = new HashMap<>();
+            groupInfo.put("id", group.getId());
+            groupInfo.put("name", group.getName());
+            result.add(groupInfo);
+        }
+        return result;
     }
 
 }

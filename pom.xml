@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.7</version> <!-- Use the latest stable version -->
+        <version>3.5.8</version> <!-- Use the latest stable version -->
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.example</groupId>
@@ -14,7 +14,7 @@
     <name>file-manager</name>
     <description>File Manager project for Spring Boot</description>
     <properties>
-        <java.version>21</java.version> <!-- Updated to Java 21 -->
+        <java.version>17</java.version> <!-- Updated to Java 17 -->
     </properties>
     <dependencyManagement>
         <dependencies>

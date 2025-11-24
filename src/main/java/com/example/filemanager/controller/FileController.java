@@ -7,6 +7,7 @@ import com.example.filemanager.controller.dto.MoveRequest;
 import com.example.filemanager.controller.dto.LockRequest;
 import com.example.filemanager.controller.dto.RenameRequest;
 import com.example.filemanager.controller.dto.VersioningRequest;
+import com.example.filemanager.controller.dto.ChangeOwnerRequest;
 import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.domain.FileHistory;
 import com.example.filemanager.service.FileService;
@@ -28,6 +29,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/files")
@@ -41,7 +43,7 @@ public class FileController {
 
   @PostMapping("/folders")
   public ResponseEntity<FileResponse> createFolder(@Valid @RequestBody FolderRequest request) {
-    FileEntity newDirectory = fileService.createDirectory(request);
+    FileEntity newDirectory = fileService.createDirectory(Objects.requireNonNull(request));
 
     URI location = ServletUriComponentsBuilder.fromCurrentRequest()
         .path("/{id}")
@@ -66,7 +68,8 @@ public class FileController {
       @RequestParam(value = "permissions", defaultValue = "644") String permissions)
       throws IOException {
 
-    FileEntity newFile = fileService.uploadFile(file, parentFolderId, permissions);
+    FileEntity newFile = fileService.uploadFile(Objects.requireNonNull(file), parentFolderId,
+        Objects.requireNonNull(permissions));
 
     URI location = ServletUriComponentsBuilder.fromCurrentRequest()
         .path("/{id}")
@@ -79,20 +82,20 @@ public class FileController {
   @PutMapping("/{id}")
   public ResponseEntity<FileResponse> updateFile(
       @PathVariable Long id, @RequestParam("file") MultipartFile file) throws IOException {
-    FileEntity updatedFile = fileService.updateFile(id, file);
+    FileEntity updatedFile = fileService.updateFile(Objects.requireNonNull(id), Objects.requireNonNull(file));
     return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 
   @GetMapping("/{id}")
   public ResponseEntity<Resource> downloadFile(@PathVariable Long id) throws IOException {
-    FileEntity fileEntity = fileService.findFileById(id);
-    byte[] data = fileService.downloadFile(fileEntity);
+    FileEntity fileEntity = fileService.findFileById(Objects.requireNonNull(id));
+    byte[] data = Objects.requireNonNull(fileService.downloadFile(Objects.requireNonNull(fileEntity)));
     ByteArrayResource resource = new ByteArrayResource(data);
 
     String encodedFilename = URLEncoder.encode(fileEntity.getName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
 
     return ResponseEntity.ok()
-        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+        .contentType(Objects.requireNonNull(MediaType.APPLICATION_OCTET_STREAM))
         .header(
             HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFilename)
         .body(resource);
@@ -101,20 +104,22 @@ public class FileController {
   @DeleteMapping("/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void deleteFile(@PathVariable Long id) {
-    fileService.softDeleteFile(id);
+    fileService.softDeleteFile(Objects.requireNonNull(id));
   }
 
   @PutMapping("/{id}/name")
   public ResponseEntity<FileResponse> renameFile(
       @PathVariable Long id, @Valid @RequestBody RenameRequest request) {
-    FileEntity updatedFile = fileService.renameFile(id, request.getNewName());
+    FileEntity updatedFile = fileService.renameFile(Objects.requireNonNull(id),
+        Objects.requireNonNull(request.getNewName()));
     return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 
   @PutMapping("/{id}/lock")
   public ResponseEntity<Void> updateLockStatus(@PathVariable Long id, @RequestBody LockRequest lockRequest,
       @AuthenticationPrincipal UserDetails userDetails) {
-    fileService.updateLockStatus(id, lockRequest.isLocked(), userDetails.getUsername());
+    fileService.updateLockStatus(Objects.requireNonNull(id), lockRequest.isLocked(),
+        Objects.requireNonNull(userDetails.getUsername()));
     return ResponseEntity.noContent().build();
   }
 
@@ -127,7 +132,7 @@ public class FileController {
 
   @PostMapping("/{id}/restore")
   public ResponseEntity<FileResponse> restoreFile(@PathVariable Long id) {
-    FileEntity restoredFile = fileService.restoreFile(id);
+    FileEntity restoredFile = fileService.restoreFile(Objects.requireNonNull(id));
     return ResponseEntity.ok(new FileResponse(restoredFile));
   }
 
@@ -143,20 +148,21 @@ public class FileController {
   @PutMapping("/{id}/parent")
   public ResponseEntity<FileResponse> moveFile(
       @PathVariable Long id, @Valid @RequestBody MoveRequest request) {
-    FileEntity movedFile = fileService.moveFile(id, request.getNewParentId());
+    FileEntity movedFile = fileService.moveFile(Objects.requireNonNull(id),
+        Objects.requireNonNull(request.getNewParentId()));
     return ResponseEntity.ok(new FileResponse(movedFile));
   }
 
   @PutMapping("/folders/{id}/versioning")
   public ResponseEntity<FileResponse> toggleVersioning(
       @PathVariable Long id, @Valid @RequestBody VersioningRequest request) {
-    FileEntity updatedFolder = fileService.toggleVersioning(id, request.getEnabled());
+    FileEntity updatedFolder = fileService.toggleVersioning(Objects.requireNonNull(id), request.getEnabled());
     return ResponseEntity.ok(new FileResponse(updatedFolder));
   }
 
   @GetMapping("/{id}/versions")
   public ResponseEntity<List<FileHistoryResponse>> getFileVersions(@PathVariable Long id) {
-    List<FileHistory> versions = fileService.getFileVersions(id);
+    List<FileHistory> versions = fileService.getFileVersions(Objects.requireNonNull(id));
     List<FileHistoryResponse> response = versions.stream().map(FileHistoryResponse::new).collect(Collectors.toList());
     return ResponseEntity.ok(response);
   }
@@ -164,7 +170,25 @@ public class FileController {
   @PostMapping("/{id}/restore/{versionId}")
   public ResponseEntity<FileResponse> restoreFileVersion(
       @PathVariable Long id, @PathVariable Long versionId) {
-    FileEntity restoredFile = fileService.restoreFileVersion(id, versionId);
+    FileEntity restoredFile = fileService.restoreFileVersion(Objects.requireNonNull(id),
+        Objects.requireNonNull(versionId));
     return ResponseEntity.ok(new FileResponse(restoredFile));
+  }
+
+  @PutMapping("/{id}/owner")
+  public ResponseEntity<FileResponse> changeOwner(
+      @PathVariable Long id, @Valid @RequestBody ChangeOwnerRequest request) {
+    FileEntity updatedFile = fileService.changeOwner(Objects.requireNonNull(id),
+        Objects.requireNonNull(request.getOwnerUserId()), Objects.requireNonNull(request.getOwnerGroupId()),
+        request.isRecursive());
+    return ResponseEntity.ok(new FileResponse(updatedFile));
+  }
+
+  @PutMapping("/{id}/tags")
+  public ResponseEntity<FileResponse> updateTags(
+      @PathVariable Long id, @Valid @RequestBody com.example.filemanager.controller.dto.TagsRequest request) {
+    FileEntity updatedFile = fileService.updateTags(Objects.requireNonNull(id),
+        Objects.requireNonNull(request.getTags()));
+    return ResponseEntity.ok(new FileResponse(updatedFile));
   }
 }

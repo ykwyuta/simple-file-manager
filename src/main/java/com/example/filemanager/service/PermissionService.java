@@ -1,7 +1,7 @@
 package com.example.filemanager.service;
 
 import com.example.filemanager.domain.FileEntity;
-import com.example.filemanager.domain.Group;
+
 import com.example.filemanager.domain.Permission;
 import com.example.filemanager.domain.User;
 import org.slf4j.Logger;
