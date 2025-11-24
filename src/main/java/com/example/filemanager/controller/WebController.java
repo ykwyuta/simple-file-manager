@@ -2,8 +2,11 @@ package com.example.filemanager.controller;
 
 import com.example.filemanager.controller.dto.FolderRequest;
 import com.example.filemanager.domain.FileEntity;
+import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
 import com.example.filemanager.service.FileService;
+import com.example.filemanager.service.GroupService;
+import com.example.filemanager.service.UserService;
 import java.io.IOException;
 
 import org.springframework.data.domain.Page;
@@ -31,9 +34,13 @@ import java.util.Objects;
 public class WebController {
 
     private final FileService fileService;
+    private final UserService userService;
+    private final GroupService groupService;
 
-    public WebController(FileService fileService) {
+    public WebController(FileService fileService, UserService userService, GroupService groupService) {
         this.fileService = fileService;
+        this.userService = userService;
+        this.groupService = groupService;
     }
 
     @GetMapping("/")
@@ -376,6 +383,34 @@ public class WebController {
             redirectAttributes.addFlashAttribute("error", "Failed to update tags: " + e.getMessage());
         }
         return "redirect:/" + (currentFolderId != null ? "?folderId=" + currentFolderId : "");
+    }
+
+    @GetMapping("/web/api/users")
+    @ResponseBody
+    public List<Map<String, Object>> getUsers() {
+        List<User> users = userService.findAllUsers();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (User user : users) {
+            Map<String, Object> userInfo = new HashMap<>();
+            userInfo.put("id", user.getId());
+            userInfo.put("username", user.getUsername());
+            result.add(userInfo);
+        }
+        return result;
+    }
+
+    @GetMapping("/web/api/groups")
+    @ResponseBody
+    public List<Map<String, Object>> getGroups() {
+        List<Group> groups = groupService.findAllGroups();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Group group : groups) {
+            Map<String, Object> groupInfo = new HashMap<>();
+            groupInfo.put("id", group.getId());
+            groupInfo.put("name", group.getName());
+            result.add(groupInfo);
+        }
+        return result;
     }
 
 }

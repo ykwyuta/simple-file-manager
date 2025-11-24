@@ -610,7 +610,7 @@
             }
 
             // Fetch users
-            fetch('/api/users')
+            fetch('/web/api/users')
                 .then(response => response.json())
                 .then(users => {
                     const select = document.getElementById('changeOwnerUserSelect');
@@ -624,7 +624,7 @@
                 });
 
             // Fetch groups
-            fetch('/api/groups')
+            fetch('/web/api/groups')
                 .then(response => response.json())
                 .then(groups => {
                     const select = document.getElementById('changeOwnerGroupSelect');
