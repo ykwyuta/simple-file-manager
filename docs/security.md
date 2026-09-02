@@ -105,8 +105,8 @@ Linux 風の 3 桁パーミッション (例 `750`) を**10 進数の整数**と
 - [ ] `spring.h2.console.enabled=false` (既定値) を確認する
 - [ ] `COOKIE_SECURE=true` を設定する (TLS 終端がある場合)
 - [ ] `.env` の値をすべて実際の値に置き換える
-- [ ] `spring.jpa.hibernate.ddl-auto` を `validate` にし、マイグレーションで
-      スキーマを管理する (docs/operations.md 参照)
+- [ ] マイグレーションを含むデプロイの前にバックアップを取得する
+      (docs/migrations.md 参照)
 - [ ] 過去にリポジトリへコミットされた S3 キーと Garage トークンを失効させる
 
 ## 7. 回帰テスト

@@ -39,10 +39,23 @@ Garage の初回セットアップ (バケットとアクセスキーの作成) 
 
 ## 3. スキーマ管理
 
-現在は `spring.jpa.hibernate.ddl-auto=update` でエンティティからスキーマを
-生成している。本番では Flyway または Liquibase を導入し、`validate` に切り替える
-ことを推奨する。インデックスは `FileEntity` の `@Table(indexes = ...)` で定義済み
-(`parent_folder_id`, `owner_user_id`, `owner_group_id`, `name`, `deleted_at`)。
+スキーマは Flyway が管理する (`src/main/resources/db/migration/`)。Hibernate は
+`ddl-auto=validate` で検証のみを行い、スキーマを変更しない。エンティティと
+スキーマがずれていればアプリケーションは起動に失敗する。
+
+起動時に未適用のマイグレーションが自動で適用される。Flyway 導入前から存在する
+データベースは自動的に V1 としてベースライン化され、V2 以降が適用される。
+
+マイグレーションの追加手順、可搬な SQL の書き方、稼働中データを壊さない
+書き方は **[migrations.md](./migrations.md)** を参照。
+
+### デプロイ時の注意
+
+- マイグレーションを含むデプロイの前に必ずバックアップを取得する (第 6 節)。
+  Flyway Community Edition にロールバック機能はない。
+- 複数インスタンスを同時に起動しても、Flyway はロックを取得するため
+  マイグレーションが二重に走ることはない。
+- 適用状況は `flyway_schema_history` テーブルで確認できる。
 
 ## 4. 削除処理
 

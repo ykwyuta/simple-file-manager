@@ -12,6 +12,7 @@
 > | :--- | :--- |
 > | [docs/security.md](./docs/security.md) | 認証・認可の設計、入力検証、本番投入前チェックリスト |
 > | [docs/operations.md](./docs/operations.md) | 起動方法、削除バッチ、ログ、バックアップとリストア |
+> | [docs/migrations.md](./docs/migrations.md) | Flywayによるスキーマ管理とマイグレーションの追加手順 |
 > | [docs/api.md](./docs/api.md) | APIエンドポイント一覧とエラーコード |
 > | [e2e/README.md](./e2e/README.md) | エンドツーエンドテストの実行方法 |
 

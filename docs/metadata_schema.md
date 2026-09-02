@@ -44,6 +44,10 @@
 
 ## 4. インデックス戦略
 
+> 以下のインデックスは `V2__file_size_content_type_and_indexes.sql` で作成済み。
+> スキーマの正はマイグレーションファイル (`src/main/resources/db/migration/`) であり、
+> 本節はその意図を説明するもの。詳細は [migrations.md](./migrations.md) を参照。
+
 検索パフォーマンスとデータ整合性を確保するため、以下のインデックスを設定する。
 
 | インデックス対象カラム | インデックス種類 | 目的 |

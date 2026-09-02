@@ -7,22 +7,22 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Index;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+/**
+ * A file or folder's metadata. The bytes live in {@code FileStorage}.
+ *
+ * <p>
+ * Indexes are not declared here: the schema is owned by the migrations in
+ * {@code db/migration}, and Hibernate only validates it. An index added to an
+ * annotation would never be created. See docs/migrations.md.
+ */
 @Entity
-@Table(name = "files", indexes = {
-        // Mirrors the index strategy in docs/metadata_schema.md.
-        @Index(name = "idx_files_parent", columnList = "parent_folder_id"),
-        @Index(name = "idx_files_owner_user", columnList = "owner_user_id"),
-        @Index(name = "idx_files_owner_group", columnList = "owner_group_id"),
-        @Index(name = "idx_files_name", columnList = "name"),
-        @Index(name = "idx_files_deleted_at", columnList = "deleted_at")
-})
+@Table(name = "files")
 public class FileEntity {
 
     @Id

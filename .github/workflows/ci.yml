@@ -37,6 +37,90 @@ jobs:
           path: target/surefire-reports/
           if-no-files-found: ignore
 
+  postgres-migrations:
+    name: Migrations on PostgreSQL
+    runs-on: ubuntu-latest
+    # The unit suite runs the migrations on H2. This runs the same files on the
+    # database production actually uses, so vendor-specific SQL cannot slip in
+    # unnoticed, and checks Hibernate validates the migrated schema there too.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: filemanager
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: filemanager_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U filemanager"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Package the application
+        run: mvn -B -DskipTests package
+
+      # Starting is the assertion: Flyway applies the migrations and Hibernate
+      # then validates the result against the entities, failing startup on any
+      # mismatch. `local-storage` keeps this job to one dependency.
+      - name: Migrate a fresh database and validate the schema
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/filemanager_db
+          DB_USERNAME: filemanager
+          DB_PASSWORD: ci-password
+        run: |
+          java -jar target/file-manager-0.0.1-SNAPSHOT.jar \
+            --spring.profiles.active=postgres,local-storage \
+            --server.port=8081 > postgres-run.log 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8081/login > /dev/null; then break; fi
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "::error::Application exited during startup"; cat postgres-run.log; exit 1
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:8081/login > /dev/null || { cat postgres-run.log; exit 1; }
+          grep -q "Successfully applied" postgres-run.log || {
+            echo "::error::Flyway did not apply the migrations"; cat postgres-run.log; exit 1; }
+          kill $APP_PID
+
+      # A second start must be a clean no-op, not a re-run or an error.
+      - name: Restart against the already-migrated database
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/filemanager_db
+          DB_USERNAME: filemanager
+          DB_PASSWORD: ci-password
+        run: |
+          timeout 120 java -jar target/file-manager-0.0.1-SNAPSHOT.jar \
+            --spring.profiles.active=postgres,local-storage \
+            --server.port=8082 > restart.log 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8082/login > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:8082/login > /dev/null || { cat restart.log; exit 1; }
+          kill $APP_PID
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-migration-logs
+          path: "*.log"
+          if-no-files-found: ignore
+
   e2e-tests:
     name: End-to-end tests
     runs-on: ubuntu-latest
