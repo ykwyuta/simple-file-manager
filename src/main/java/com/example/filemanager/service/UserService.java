@@ -1,8 +1,10 @@
 package com.example.filemanager.service;
 
+import com.example.filemanager.controller.dto.UserRequest;
 import com.example.filemanager.domain.FileEntity;
 import com.example.filemanager.domain.Group;
 import com.example.filemanager.domain.User;
+import com.example.filemanager.exception.DuplicateUsernameException;
 import com.example.filemanager.exception.GroupNotFoundException;
 import com.example.filemanager.exception.UserNotFoundException;
 import com.example.filemanager.repository.FileRepository;
@@ -24,6 +26,9 @@ import org.springframework.lang.NonNull;
 @Transactional
 public class UserService implements UserDetailsService {
 
+    /** The account that cannot be deleted or demoted, so the system stays administrable. */
+    public static final String BOOTSTRAP_ADMIN = "admin";
+
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
     private final PasswordEncoder passwordEncoder;
@@ -38,16 +43,45 @@ public class UserService implements UserDetailsService {
     }
 
     public User createUser(@NonNull User user, List<Long> groupIds) {
+        if (userRepository.findByUsername(user.getUsername()).isPresent()) {
+            throw new DuplicateUsernameException(
+                    "ユーザー名 '" + user.getUsername() + "' は既に使用されています。");
+        }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         if (groupIds != null && !groupIds.isEmpty()) {
-            List<Group> groups = groupRepository.findAllById(groupIds);
-            user.setGroups(new HashSet<>(groups));
+            user.setGroups(new HashSet<>(resolveGroups(groupIds)));
         }
         return userRepository.save(user);
     }
 
     public User createUser(@NonNull User user) {
         return createUser(user, null);
+    }
+
+    public User createUser(@NonNull UserRequest request) {
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new IllegalArgumentException("パスワードを入力してください。");
+        }
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setPassword(request.getPassword());
+        return createUser(user, request.getGroupIds());
+    }
+
+    public User updateUser(@NonNull Long id, @NonNull UserRequest request) {
+        User details = new User();
+        details.setUsername(request.getUsername());
+        details.setPassword(request.getPassword());
+        return updateUser(id, details, request.getGroupIds());
+    }
+
+    /** Resolves group ids, failing loudly on ids that do not exist. */
+    private List<Group> resolveGroups(List<Long> groupIds) {
+        List<Group> groups = groupRepository.findAllById(groupIds);
+        if (groups.size() != groupIds.size()) {
+            throw new GroupNotFoundException("指定されたグループの一部が存在しません。");
+        }
+        return groups;
     }
 
     @Transactional(readOnly = true)
@@ -64,17 +98,25 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
 
-        if ("admin".equals(user.getUsername())) {
-            if (!"admin".equals(userDetails.getUsername())) {
-                throw new IllegalArgumentException("Cannot change username of admin user");
+        if (BOOTSTRAP_ADMIN.equals(user.getUsername())) {
+            if (!BOOTSTRAP_ADMIN.equals(userDetails.getUsername())) {
+                throw new IllegalArgumentException("admin ユーザーのユーザー名は変更できません。");
             }
             if (groupIds != null) {
-                Group adminsGroup = groupRepository.findByName("admins")
-                        .orElseThrow(() -> new GroupNotFoundException("Admins group not found"));
-                if (groupIds.size() != 1 || !groupIds.contains(adminsGroup.getId())) {
-                    throw new IllegalArgumentException("Admin user must belong to and only to 'admins' group");
+                Group adminsGroup = groupRepository.findByName(User.ADMIN_GROUP)
+                        .orElseThrow(() -> new GroupNotFoundException("admins グループが見つかりません。"));
+                if (!groupIds.contains(adminsGroup.getId())) {
+                    throw new IllegalArgumentException(
+                            "admin ユーザーを admins グループから外すことはできません。");
                 }
             }
+        }
+
+        if (!user.getUsername().equals(userDetails.getUsername())) {
+            userRepository.findByUsername(userDetails.getUsername()).ifPresent(existing -> {
+                throw new DuplicateUsernameException(
+                        "ユーザー名 '" + userDetails.getUsername() + "' は既に使用されています。");
+            });
         }
 
         user.setUsername(userDetails.getUsername());
@@ -82,8 +124,7 @@ public class UserService implements UserDetailsService {
             user.setPassword(passwordEncoder.encode(userDetails.getPassword()));
         }
         if (groupIds != null) {
-            List<Group> groups = groupRepository.findAllById(groupIds);
-            user.setGroups(new HashSet<>(groups));
+            user.setGroups(new HashSet<>(resolveGroups(groupIds)));
         }
         return userRepository.save(user);
     }
@@ -95,13 +136,13 @@ public class UserService implements UserDetailsService {
     public void deleteUser(@NonNull Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
-        if ("admin".equals(user.getUsername())) {
-            throw new IllegalArgumentException("Cannot delete admin user");
+        if (BOOTSTRAP_ADMIN.equals(user.getUsername())) {
+            throw new IllegalArgumentException("admin ユーザーは削除できません。");
         }
 
         // Transfer ownership of all files/folders to admin user
-        User adminUser = userRepository.findByUsername("admin")
-                .orElseThrow(() -> new UserNotFoundException("Admin user not found"));
+        User adminUser = userRepository.findByUsername(BOOTSTRAP_ADMIN)
+                .orElseThrow(() -> new UserNotFoundException("admin ユーザーが見つかりません。"));
 
         List<FileEntity> ownedFiles = fileRepository.findAllByOwner(user);
         for (FileEntity file : ownedFiles) {
@@ -133,6 +174,6 @@ public class UserService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+                .orElseThrow(() -> new UsernameNotFoundException("ユーザーが見つかりません: " + username));
     }
 }

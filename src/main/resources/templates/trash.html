@@ -1,41 +1,38 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org"
+    xmlns:sec="http://www.thymeleaf.org/extras/spring-security" lang="ja">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Trash - File Manager</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
+<head th:replace="~{fragments/layout :: head('ゴミ箱 | File Manager')}"></head>
 
 <body>
+    <svg th:replace="~{fragments/layout :: icons}"></svg>
     <div class="container">
         <header>
-            <h1><i class="fas fa-trash-alt"></i> Trash</h1>
-            <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to Home</a>
+            <h1><svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg> ゴミ箱</h1>
+            <a href="/" class="btn btn-secondary"><svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg> ファイル一覧に戻る</a>
         </header>
 
         <div th:if="${message}" class="alert alert-success">
-            <i class="fas fa-check-circle"></i> <span th:text="${message}"></span>
+            <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg> <span th:text="${message}"></span>
         </div>
         <div th:if="${error}" class="alert alert-error">
-            <i class="fas fa-exclamation-circle"></i> <span th:text="${error}"></span>
+            <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg> <span th:text="${error}"></span>
         </div>
 
         <div class="card">
             <table class="file-list">
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Deleted At</th>
-                        <th>Actions</th>
+                        <th scope="col">名前</th>
+                        <th scope="col">削除日時</th>
+                        <th scope="col">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr th:each="file : ${files}">
                         <td>
-                            <i th:if="${file.directory}" class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
-                            <i th:unless="${file.directory}" class="fas fa-file file-icon" style="color: #94a3b8;"></i>
+                            <svg th:if="${file.directory}" class="icon file-icon folder-icon" aria-hidden="true"><use href="#i-folder"></use></svg>
+                            <svg th:unless="${file.directory}" class="icon file-icon" aria-hidden="true"><use href="#i-file"></use></svg>
                             <span th:text="${file.name}">File</span>
                         </td>
                         <td th:text="${#temporals.format(file.deletedAt, 'yyyy-MM-dd HH:mm')}">2023-01-01 12:00</td>
@@ -43,15 +40,13 @@
                             <form th:action="@{'/restore/' + ${file.id}}" method="post" style="display: inline;">
                                 <button type="submit" class="btn btn-primary"
                                     style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                                    <i class="fas fa-trash-restore"></i> Restore
+                                    <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg> Restore
                                 </button>
                             </form>
                         </td>
                     </tr>
                     <tr th:if="${#lists.isEmpty(files)}">
-                        <td colspan="3" style="text-align: center; color: var(--text-secondary);">
-                            Trash is empty.
-                        </td>
+                        <td colspan="3" class="empty-state">ゴミ箱は空です。</td>
                     </tr>
                 </tbody>
             </table>
@@ -63,7 +58,7 @@
             alerts.forEach(alert => {
                 // Add close button
                 const closeBtn = document.createElement('span');
-                closeBtn.innerHTML = '&times;';
+                closeBtn.textContent = '\u00d7';
                 closeBtn.className = 'close-btn';
                 closeBtn.style.cursor = 'pointer';
                 closeBtn.style.float = 'right';

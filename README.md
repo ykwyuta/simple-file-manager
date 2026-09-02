@@ -1,5 +1,22 @@
 ## 📁 ファイル管理システム要件定義 (README)
 
+> **クイックスタート（依存サービスなし）**
+> ```bash
+> mvn package -DskipTests
+> java -jar target/file-manager-0.0.1-SNAPSHOT.jar --spring.profiles.active=h2
+> # http://localhost:8080/ に admin / admin でログイン
+> ```
+> `h2` プロファイルはインメモリDBとファイルシステム保存を使うため、PostgreSQLもS3互換ストレージも不要です。
+>
+> | ドキュメント | 内容 |
+> | :--- | :--- |
+> | [docs/security.md](./docs/security.md) | 認証・認可の設計、入力検証、本番投入前チェックリスト |
+> | [docs/operations.md](./docs/operations.md) | 起動方法、削除バッチ、ログ、バックアップとリストア |
+> | [docs/migrations.md](./docs/migrations.md) | Flywayによるスキーマ管理とマイグレーションの追加手順 |
+> | [docs/api.md](./docs/api.md) | APIエンドポイント一覧とエラーコード |
+> | [e2e/README.md](./e2e/README.md) | エンドツーエンドテストの実行方法 |
+
+
 ### 1\. 🎯 目的
 
 Spring Boot、JPA、Thymeleafを用いて、**ユーザーグループ**と**ユーザー**に基づいた**Linux類似のアクセス権限モデル**を持つ、堅牢でスケーラブルなファイル管理システムを構築する。ファイル本体は外部ストレージに保存し、データベースはメタデータ管理に特化する。
@@ -193,8 +210,9 @@ volumes:
 
 ### 補足 1. ユーザー認証・認可
 
-  * **認証**: ユーザー認証（ログイン/ログアウト）機能が必要です。Spring Securityによるフォーム認証を採用します。
-  * **認可**: 認証されたユーザーが、特定のリソース（ファイル/フォルダ）へのアクセス権限を持っているかチェックする必要があります。権限チェックロジックはサービス層に実装し、Linux風パーミッションに基づき判定します。
+  * **認証**: 画面はSpring Securityのフォーム認証（ログイン/ログアウト）、API (`/api/**`) はステートレスなHTTP Basic認証です。フィルターチェーンを分けている理由と、API側でCSRFが成立しない仕組みは **[docs/security.md](./docs/security.md)** に記載しています。
+  * **認可**: 権限チェックは `PermissionService`（単一エンティティ）と `FileSpecification`（一覧・検索のSQL絞り込み）の2か所に実装し、Linux風パーミッションに基づき判定します。`admins` グループの所属者はこの判定をバイパスします。
+  * **セキュリティ設計の詳細と本番投入前チェックリストは [docs/security.md](./docs/security.md) を参照してください。**
 
 ### 補足 2. URLパスの管理
 

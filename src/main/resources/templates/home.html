@@ -1,58 +1,65 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org"
+    xmlns:sec="http://www.thymeleaf.org/extras/spring-security" lang="ja">
 
-<head>
-    <meta charset="UTF-8">
-    <title>File Manager</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
+<head th:replace="~{fragments/layout :: head('ファイル管理 | File Manager')}"></head>
 
 <body>
+    <svg th:replace="~{fragments/layout :: icons}"></svg>
     <div class="container">
         <header>
-            <h1><i class="fas fa-cloud"></i> File Manager</h1>
+            <h1><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg> File Manager</h1>
             <div style="display: flex; gap: 1rem; align-items: center;">
-                <a href="/admin/users" class="btn btn-secondary"
-                    style="color: var(--text-primary); text-decoration: none;">
-                    <i class="fas fa-users-cog"></i> Users
+                <a sec:authorize="hasRole('ADMINS')" href="/admin/users" class="btn btn-secondary nav-link">
+                    <svg class="icon" aria-hidden="true"><use href="#i-users"></use></svg> ユーザー
                 </a>
-                <a href="/admin/groups" class="btn btn-secondary"
-                    style="color: var(--text-primary); text-decoration: none;">
-                    <i class="fas fa-users"></i> Groups
+                <a sec:authorize="hasRole('ADMINS')" href="/admin/groups" class="btn btn-secondary nav-link">
+                    <svg class="icon" aria-hidden="true"><use href="#i-users"></use></svg> グループ
                 </a>
                 <div class="search-bar">
-                    <form action="/search" method="get" style="display: flex; gap: 0.5rem;">
-                        <input type="text" name="query" class="form-control" placeholder="Search files...">
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i></button>
+                    <form th:action="@{/search}" method="get" style="display: flex; gap: 0.5rem;">
+                        <label for="headerSearch" class="visually-hidden">ファイル名で検索</label>
+                        <input type="text" id="headerSearch" name="query" class="form-control"
+                            placeholder="ファイルを検索...">
+                        <button type="submit" class="btn btn-primary" aria-label="検索">
+                            <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+                        </button>
+                    </form>
+                </div>
+                <div class="user-menu">
+                    <span class="current-user" th:text="${currentUser.username}">user</span>
+                    <form th:action="@{/logout}" method="post" style="display:inline;">
+                        <button type="submit" class="btn btn-secondary" title="ログアウト">
+                            <svg class="icon" aria-hidden="true"><use href="#i-logout"></use></svg> ログアウト
+                        </button>
                     </form>
                 </div>
             </div>
         </header>
 
         <div th:if="${message}" class="alert alert-success">
-            <i class="fas fa-check-circle"></i> <span th:text="${message}"></span>
+            <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg> <span th:text="${message}"></span>
         </div>
         <div th:if="${error}" class="alert alert-error">
-            <i class="fas fa-exclamation-circle"></i> <span th:text="${error}"></span>
+            <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg> <span th:text="${error}"></span>
         </div>
 
         <div class="actions" style="margin-bottom: 1rem; justify-content: space-between;">
             <div style="display: flex; gap: 0.5rem;">
                 <button onclick="openModal('uploadModal')" class="btn btn-primary">
-                    <i class="fas fa-upload"></i> Upload
+                    <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg> アップロード
                 </button>
                 <button onclick="openModal('folderModal')" class="btn btn-secondary">
-                    <i class="fas fa-folder-plus"></i> New Folder
+                    <svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg> 新規フォルダ
                 </button>
             </div>
             <a href="/trash" class="btn btn-danger">
-                <i class="fas fa-trash-alt"></i> Trash
+                <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg> ゴミ箱
             </a>
         </div>
 
         <div class="breadcrumb">
-            <a href="/"><i class="fas fa-home"></i> Home</a>
+            <a href="/"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg> ホーム</a>
             <th:block th:each="folder : ${breadcrumbs}">
                 <span> / </span>
                 <a th:if="${folder.id != currentFolder.id}" th:href="@{'/?folderId=' + ${folder.id}}"
@@ -65,38 +72,39 @@
             <table class="file-list">
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Owner</th>
-                        <th>Group</th>
-                        <th>Permissions</th>
-                        <th>Tags</th>
-                        <th>Modified</th>
-                        <th>Actions</th>
+                        <th scope="col">名前</th>
+                        <th scope="col">所有者</th>
+                        <th scope="col">グループ</th>
+                        <th scope="col">サイズ</th>
+                        <th scope="col">パーミッション</th>
+                        <th scope="col">タグ</th>
+                        <th scope="col">更新日時</th>
+                        <th scope="col">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr th:if="${parentFolderId != null}">
                         <td colspan="6">
                             <a th:href="@{'/?folderId=' + ${parentFolderId}}" class="folder-link">
-                                <i class="fas fa-level-up-alt file-icon"></i> ..
+                                <svg class="icon" aria-hidden="true"><use href="#i-up"></use></svg> ..
                             </a>
                         </td>
                     </tr>
                     <tr th:each="file : ${files}">
                         <td>
                             <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}" class="folder-link">
-                                <i class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
+                                <svg class="icon file-icon folder-icon" aria-hidden="true"><use href="#i-folder"></use></svg>
                                 <span th:text="${file.name}">Folder</span>
-                                <i th:if="${file.versioningEnabled}" class="fas fa-code-branch"
-                                    style="color: #22c55e; margin-left: 0.5rem; font-size: 0.8rem;"
-                                    title="Versioning enabled"></i>
+                                <svg th:if="${file.versioningEnabled == true}" class="icon icon-sm state-versioned"
+                                    aria-hidden="true"><title>バージョン管理が有効</title>
+                                    <use href="#i-branch"></use></svg>
                             </a>
                             <span th:unless="${file.directory}" class="folder-link" style="cursor: default;">
-                                <i class="fas fa-file file-icon" style="color: #94a3b8;"></i>
+                                <svg class="icon file-icon" aria-hidden="true"><use href="#i-file"></use></svg>
                                 <span th:text="${file.name}">File</span>
-                                <i th:if="${file.locked}" class="fas fa-lock"
-                                    style="color: #ef4444; margin-left: 0.5rem; font-size: 0.8rem;"
-                                    th:title="'Locked by ' + ${file.lockedBy.username}"></i>
+                                <svg th:if="${file.locked}" class="icon icon-sm state-locked" aria-hidden="true">
+                                    <title th:text="${file.lockedBy.username} + ' がロック中'">ロック中</title>
+                                    <use href="#i-lock"></use></svg>
                             </span>
                         </td>
                         <td>
@@ -109,6 +117,7 @@
                         <td>
                             <span th:text="${file.group.name}">group</span>
                         </td>
+                        <td class="numeric" th:text="${file.directory} ? '—' : ${#numbers.formatInteger(file.sizeBytes == null ? 0 : file.sizeBytes, 0, 'COMMA')} + ' B'">—</td>
                         <td>
                             <code class="permission-badge"
                                 th:classappend="${file.owner.id == currentUser.id ? 'permission-editable' : ''}"
@@ -132,60 +141,62 @@
                         <td>
                             <div class="actions">
                                 <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}"
-                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                                    <i class="fas fa-download"></i>
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                    title="ダウンロード" aria-label="ダウンロード">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
                                 </a>
                                 <button th:unless="${file.directory}" type="button" th:data-id="${file.id}"
                                     th:data-name="${file.name}"
                                     onclick="openVersionHistoryModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                    title="Version History">
-                                    <i class="fas fa-history"></i>
+                                    title="バージョン履歴" aria-label="バージョン履歴">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-history"></use></svg>
                                 </button>
                                 <button th:if="${file.directory}" type="button" th:data-id="${file.id}"
                                     th:data-name="${file.name}" th:data-versioning="${file.versioningEnabled}"
                                     th:data-owner="${file.owner.id}" th:data-permissions="${file.permissions}"
                                     onclick="openVersioningToggleModal(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-versioning'), this.getAttribute('data-owner'), this.getAttribute('data-permissions'))"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                    th:title="${file.owner.id == currentUser.id ? 'Toggle Versioning' : 'Toggle Versioning (requires write permission)'}">
-                                    <i class="fas fa-code-branch"></i>
+                                    title="バージョン管理を切り替え" aria-label="バージョン管理を切り替え">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-branch"></use></svg>
                                 </button>
                                 <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
                                     onclick="openRenameModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
-                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                                    <i class="fas fa-edit"></i>
+                                    class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                    title="名前を変更" aria-label="名前を変更">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
                                 </button>
                                 <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
                                     th:data-tags="${file.customTags}"
                                     onclick="openTagsModal(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-tags'))"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                    title="Edit Tags">
-                                    <i class="fas fa-tags"></i>
+                                    title="タグを編集" aria-label="タグを編集">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-tags"></use></svg>
                                 </button>
                                 <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
                                     onclick="openMoveModal(this.getAttribute('data-id'), this.getAttribute('data-name'))"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                    title="Move">
-                                    <i class="fas fa-arrow-right"></i>
+                                    title="移動" aria-label="移動">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-move"></use></svg>
                                 </button>
                                 <button type="button" th:data-id="${file.id}" th:data-name="${file.name}"
                                     th:data-is-directory="${file.directory}"
                                     onclick="openChangeOwnerModal(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-is-directory'))"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                    title="Change Owner/Group">
-                                    <i class="fas fa-user-edit"></i>
+                                    title="所有者・グループを変更" aria-label="所有者・グループを変更">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-user-edit"></use></svg>
                                 </button>
                                 <form
-                                    th:if="${currentFolder != null && currentFolder.versioningEnabled && !file.directory}"
+                                    th:if="${currentFolder != null and currentFolder.versioningEnabled == true and !file.directory}"
                                     th:action="@{'/files/' + ${file.id} + '/lock'}" method="post"
                                     style="display: inline;">
                                     <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                                     <input type="hidden" name="locked" th:value="${!file.locked}">
                                     <button type="submit" class="btn btn-secondary"
                                         style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                        th:title="${file.locked ? 'Unlock' : 'Lock'}"
+                                        th:title="${file.locked ? 'ロックを解除' : 'ロック'}" th:aria-label="${file.locked ? 'ロックを解除' : 'ロック'}"
                                         th:disabled="${file.locked && file.lockedBy.id != currentUser.id}">
-                                        <i th:class="${file.locked ? 'fas fa-unlock' : 'fas fa-lock'}"></i>
+                                        <svg class="icon" aria-hidden="true"><use th:attr="href=${file.locked} ? '#i-unlock' : '#i-lock'" href="#i-lock"></use></svg>
                                     </button>
                                 </form>
                                 <form th:action="@{'/delete/' + ${file.id}}" method="post"
@@ -195,16 +206,16 @@
                                     <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                                     <button type="submit" class="btn btn-danger"
                                         style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
-                                        th:title="${file.owner.id == currentUser.id ? 'Delete' : 'Delete (requires write permission)'}">
-                                        <i class="fas fa-trash"></i>
+                                        title="ゴミ箱に移動" aria-label="ゴミ箱に移動">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
                                     </button>
                                 </form>
                             </div>
                         </td>
                     </tr>
                     <tr th:if="${#lists.isEmpty(files)}">
-                        <td colspan="6" style="text-align: center; color: var(--text-secondary);">
-                            No files found.
+                        <td colspan="8" class="empty-state">
+                            このフォルダにはまだ何もありません。「アップロード」または「新規フォルダ」から追加してください。
                         </td>
                     </tr>
                 </tbody>
@@ -217,7 +228,7 @@
             <a th:if="${currentPage > 0}"
                 th:href="@{'/?folderId=' + ${currentFolderId} + '&page=' + ${currentPage - 1} + '&size=' + ${pageSize}}"
                 class="btn btn-secondary" style="padding: 0.5rem 0.75rem;">
-                <i class="fas fa-chevron-left"></i> Previous
+                <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg> 前へ
             </a>
 
             <div style="display: flex; gap: 0.25rem;">
@@ -241,12 +252,12 @@
             <a th:if="${currentPage < totalPages - 1}"
                 th:href="@{'/?folderId=' + ${currentFolderId} + '&page=' + ${currentPage + 1} + '&size=' + ${pageSize}}"
                 class="btn btn-secondary" style="padding: 0.5rem 0.75rem;">
-                Next <i class="fas fa-chevron-right"></i>
+                次へ <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
             </a>
 
             <span style="margin-left: 1rem; color: var(--text-secondary);">
-                Page <span th:text="${currentPage + 1}">1</span> of <span th:text="${totalPages}">1</span>
-                (<span th:text="${totalItems}">0</span> items)
+                <span th:text="${currentPage + 1}">1</span> / <span th:text="${totalPages}">1</span> ページ
+                (全 <span th:text="${totalItems}">0</span> 件)
             </span>
         </div>
     </div>
@@ -254,16 +265,16 @@
     <!-- Upload Modal -->
     <div id="uploadModal" class="modal">
         <div class="modal-content">
-            <h2 style="margin-top: 0;">Upload File</h2>
-            <form action="/upload" method="post" enctype="multipart/form-data">
+            <h2 style="margin-top: 0;">ファイルをアップロード</h2>
+            <form th:action="@{/upload}" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="parentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>Select File</label>
-                    <input type="file" name="file" class="form-control" required>
+                    <label for="uploadFile">ファイルを選択</label>
+                    <input type="file" id="uploadFile" name="file" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label>Permissions</label>
-                    <input type="text" name="permissions" class="form-control" value="644" pattern="[0-7]{3}"
+                    <label for="uploadPermissions">パーミッション</label>
+                    <input type="text" id="uploadPermissions" name="permissions" class="form-control" value="644" pattern="[0-7]{3}"
                         placeholder="e.g., 644">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
@@ -278,15 +289,15 @@
     <div id="folderModal" class="modal">
         <div class="modal-content">
             <h2 style="margin-top: 0;">New Folder</h2>
-            <form action="/folders" method="post">
+            <form th:action="@{/folders}" method="post">
                 <input type="hidden" name="parentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>Folder Name</label>
-                    <input type="text" name="name" class="form-control" required>
+                    <label for="folderName">フォルダ名</label>
+                    <input type="text" id="folderName" name="name" class="form-control" required maxlength="255">
                 </div>
                 <div class="form-group">
-                    <label>Permissions</label>
-                    <input type="text" name="permissions" class="form-control" value="755" pattern="[0-7]{3}"
+                    <label for="folderPermissions">パーミッション</label>
+                    <input type="text" id="folderPermissions" name="permissions" class="form-control" value="755" pattern="[0-7]{3}"
                         placeholder="e.g., 755">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
@@ -303,6 +314,7 @@
             <h2 style="margin-top: 0;">Toggle Versioning</h2>
             <p id="versioningStatus" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
             <form id="versioningForm" method="post">
+                <input th:replace="~{fragments/layout :: csrf}">
                 <input type="hidden" name="enabled" id="versioningEnabled">
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                     <button type="button" onclick="closeModal('versioningModal')"
@@ -332,10 +344,11 @@
         <div class="modal-content">
             <h2 style="margin-top: 0;">Rename</h2>
             <form id="renameForm" method="post">
+                <input th:replace="~{fragments/layout :: csrf}">
                 <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>New Name</label>
-                    <input type="text" id="renameInput" name="name" class="form-control" required>
+                    <label for="renameInput">新しい名前</label>
+                    <input type="text" id="renameInput" maxlength="255" name="name" class="form-control" required>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                     <button type="button" onclick="closeModal('renameModal')" class="btn btn-secondary">Cancel</button>
@@ -351,9 +364,10 @@
             <h2 style="margin-top: 0;">Move File</h2>
             <p id="moveFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
             <form id="moveForm" method="post">
+                <input th:replace="~{fragments/layout :: csrf}">
                 <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>Destination Folder</label>
+                    <label for="moveDestinationSelect">移動先フォルダ</label>
                     <select id="moveDestinationSelect" name="destinationFolderId" class="form-control" required>
                         <option value="" disabled selected>Select a folder</option>
                         <!-- Options will be populated by JS -->
@@ -373,9 +387,10 @@
             <h2 style="margin-top: 0;">Change Permissions</h2>
             <p id="permissionFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
             <form id="permissionForm" method="post">
+                <input th:replace="~{fragments/layout :: csrf}">
                 <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>Permissions</label>
+                    <label for="permissionInput">パーミッション</label>
                     <input type="text" id="permissionInput" name="permissions" class="form-control" pattern="[0-7]{3}"
                         maxlength="3" required placeholder="e.g., 755">
                     <small style="color: var(--text-secondary); display: block; margin-top: 0.5rem;">
@@ -398,16 +413,17 @@
             <h2 style="margin-top: 0;">Change Owner/Group</h2>
             <p id="changeOwnerFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
             <form id="changeOwnerForm" method="post">
+                <input th:replace="~{fragments/layout :: csrf}">
                 <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>New Owner</label>
+                    <label for="changeOwnerUserSelect">新しい所有者</label>
                     <select id="changeOwnerUserSelect" name="ownerUserId" class="form-control" required>
                         <option value="" disabled selected>Select a user</option>
                         <!-- Options will be populated by JS -->
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>New Group</label>
+                    <label for="changeOwnerGroupSelect">新しいグループ</label>
                     <select id="changeOwnerGroupSelect" name="ownerGroupId" class="form-control" required>
                         <option value="" disabled selected>Select a group</option>
                         <!-- Options will be populated by JS -->
@@ -434,9 +450,10 @@
             <h2 style="margin-top: 0;">Edit Tags</h2>
             <p id="tagsFileName" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
             <form id="tagsForm" method="post">
+                <input th:replace="~{fragments/layout :: csrf}">
                 <input type="hidden" name="currentFolderId" th:value="${currentFolderId}">
                 <div class="form-group">
-                    <label>Tags (comma separated)</label>
+                    <label for="tagsInput">タグ (カンマ区切り)</label>
                     <input type="text" id="tagsInput" name="tags" class="form-control"
                         placeholder="e.g., project, important, 2023">
                     <small style="color: var(--text-secondary); display: block; margin-top: 0.5rem;">
@@ -461,7 +478,7 @@
             alerts.forEach(alert => {
                 // Add close button
                 const closeBtn = document.createElement('span');
-                closeBtn.innerHTML = '&times;';
+                closeBtn.textContent = '\u00d7';
                 closeBtn.className = 'close-btn';
                 closeBtn.style.cursor = 'pointer';
                 closeBtn.style.float = 'right';
@@ -576,11 +593,11 @@
             document.getElementById('moveForm').action = '/move/' + fileId;
 
             // Fetch folders
-            fetch('/api/folders')
+            fetch('/web/api/folders')
                 .then(response => response.json())
                 .then(folders => {
                     const select = document.getElementById('moveDestinationSelect');
-                    select.innerHTML = '<option value="" disabled selected>Select a folder</option>';
+                    resetSelect(select, 'フォルダを選択');
 
                     folders.forEach(folder => {
                         // Don't allow moving into itself (if it's a folder)
@@ -595,7 +612,7 @@
                 })
                 .catch(error => {
                     console.error('Error fetching folders:', error);
-                    alert('Failed to load folders.');
+                    alert('フォルダ一覧を取得できませんでした。');
                 });
         }
         function openChangeOwnerModal(fileId, fileName, isDirectory) {
@@ -614,7 +631,7 @@
                 .then(response => response.json())
                 .then(users => {
                     const select = document.getElementById('changeOwnerUserSelect');
-                    select.innerHTML = '<option value="" disabled selected>Select a user</option>';
+                    resetSelect(select, 'ユーザーを選択');
                     users.forEach(user => {
                         const option = document.createElement('option');
                         option.value = user.id;
@@ -628,7 +645,7 @@
                 .then(response => response.json())
                 .then(groups => {
                     const select = document.getElementById('changeOwnerGroupSelect');
-                    select.innerHTML = '<option value="" disabled selected>Select a group</option>';
+                    resetSelect(select, 'グループを選択');
                     groups.forEach(group => {
                         const option = document.createElement('option');
                         option.value = group.id;
@@ -688,48 +705,114 @@
         }
         function openVersionHistoryModal(fileId, fileName) {
             document.getElementById('versionHistoryFileName').textContent = fileName;
-            document.getElementById('versionHistoryContent').innerHTML = '<p style="color: var(--text-secondary);">Loading...</p>';
+            setStatus('versionHistoryContent', '読み込み中...');
             openModal('versionHistoryModal');
 
             // Fetch version history from API
-            fetch('/api/files/' + fileId + '/versions')
+            fetch('/web/api/files/' + encodeURIComponent(fileId) + '/versions')
                 .then(response => response.json())
                 .then(versions => {
                     if (versions.length === 0) {
-                        document.getElementById('versionHistoryContent').innerHTML =
-                            '<p style="color: var(--text-secondary);">No version history available.</p>';
+                        setStatus('versionHistoryContent', 'バージョン履歴はありません。');
                         return;
                     }
 
-                    let html = '<table class="file-list" style="margin: 0;"><thead><tr>' +
-                        '<th>Version</th><th>Modified By</th><th>Date</th><th>Action</th>' +
-                        '</tr></thead><tbody>';
+                    const table = document.createElement('table');
+                    table.className = 'file-list';
+                    table.style.margin = '0';
+                    const thead = document.createElement('thead');
+                    const headRow = document.createElement('tr');
+                    for (const label of ['バージョン', '更新者', '更新日時', '操作']) {
+                        const th = document.createElement('th');
+                        th.textContent = label;
+                        headRow.appendChild(th);
+                    }
+                    thead.appendChild(headRow);
+                    table.appendChild(thead);
 
+                    const tbody = document.createElement('tbody');
                     versions.forEach(version => {
-                        const date = new Date(version.createdAt).toLocaleString('ja-JP');
-                        html += `<tr>
-                            <td>v${version.version}</td>
-                            <td>${version.modifier}</td>
-                            <td>${date}</td>
-                            <td>
-                                <form action="/files/${fileId}/restore/${version.id}" method="post" style="display: inline;">
-                                    <input type="hidden" name="currentFolderId" value="${getCurrentFolderId()}">
-                                    <button type="submit" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                                        <i class="fas fa-undo"></i> Restore
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>`;
-                    });
+                        const row = document.createElement('tr');
 
-                    html += '</tbody></table>';
-                    document.getElementById('versionHistoryContent').innerHTML = html;
+                        const versionCell = document.createElement('td');
+                        versionCell.textContent = 'v' + version.version;
+                        row.appendChild(versionCell);
+
+                        // textContent, never innerHTML: the modifier is a user
+                        // name and therefore attacker-controlled text.
+                        const modifierCell = document.createElement('td');
+                        modifierCell.textContent = version.modifier;
+                        row.appendChild(modifierCell);
+
+                        const dateCell = document.createElement('td');
+                        dateCell.textContent = new Date(version.createdAt).toLocaleString('ja-JP');
+                        row.appendChild(dateCell);
+
+                        const actionCell = document.createElement('td');
+                        const form = document.createElement('form');
+                        form.method = 'post';
+                        form.action = '/files/' + encodeURIComponent(fileId)
+                            + '/restore/' + encodeURIComponent(version.id);
+                        form.style.display = 'inline';
+                        form.appendChild(hiddenInput('currentFolderId', getCurrentFolderId()));
+                        form.appendChild(csrfInput());
+                        const submit = document.createElement('button');
+                        submit.type = 'submit';
+                        submit.className = 'btn btn-secondary';
+                        submit.style.cssText = 'padding: 0.25rem 0.5rem; font-size: 0.8rem;';
+                        submit.textContent = '復元';
+                        form.appendChild(submit);
+                        actionCell.appendChild(form);
+                        row.appendChild(actionCell);
+
+                        tbody.appendChild(row);
+                    });
+                    table.appendChild(tbody);
+
+                    const container = document.getElementById('versionHistoryContent');
+                    container.textContent = '';
+                    container.appendChild(table);
                 })
-                .catch(error => {
-                    document.getElementById('versionHistoryContent').innerHTML =
-                        '<p style="color: var(--danger-color);">Error loading version history: ' + error.message + '</p>';
+                .catch(() => {
+                    setStatus('versionHistoryContent', 'バージョン履歴を取得できませんでした。', true);
                 });
         }
+        const CSRF_TOKEN = document.querySelector('meta[name="_csrf"]').getAttribute('content');
+        const CSRF_HEADER = document.querySelector('meta[name="_csrf_header"]').getAttribute('content');
+
+        /** Replaces a container's contents with a single status line, as text. */
+        function resetSelect(select, placeholder) {
+            select.textContent = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.disabled = true;
+            option.selected = true;
+            option.textContent = placeholder;
+            select.appendChild(option);
+        }
+
+        function setStatus(containerId, text, isError) {
+            const container = document.getElementById(containerId);
+            container.textContent = '';
+            const p = document.createElement('p');
+            p.style.color = isError ? 'var(--danger-color)' : 'var(--text-secondary)';
+            p.textContent = text;
+            container.appendChild(p);
+        }
+
+        function hiddenInput(name, value) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            return input;
+        }
+
+        /** Dynamically built forms need the CSRF token that Thymeleaf adds to static ones. */
+        function csrfInput() {
+            return hiddenInput('_csrf', CSRF_TOKEN);
+        }
+
         function getCurrentFolderId() {
             const urlParams = new URLSearchParams(window.location.search);
             return urlParams.get('folderId') || '';

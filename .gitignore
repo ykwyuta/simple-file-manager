@@ -47,3 +47,12 @@ build/
 .classpath
 .project
 .settings
+
+# Local environment files -- never commit real secrets
+.env
+.env.local
+
+# Playwright / Node
+node_modules/
+e2e/test-results/
+e2e/playwright-report/

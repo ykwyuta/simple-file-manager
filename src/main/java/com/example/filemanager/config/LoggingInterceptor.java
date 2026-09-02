@@ -18,7 +18,7 @@ public class LoggingInterceptor implements HandlerInterceptor {
     public boolean preHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
             @NonNull Object handler)
             throws Exception {
-        logger.info("START {} {}", request.getMethod(), request.getRequestURI());
+        logger.debug("START {} {}", request.getMethod(), request.getRequestURI());
         return true;
     }
 
@@ -30,7 +30,7 @@ public class LoggingInterceptor implements HandlerInterceptor {
             logger.error("END {} {} {} exception={}", request.getMethod(), request.getRequestURI(),
                     response.getStatus(), ex.getMessage(), ex);
         } else {
-            logger.info("END {} {} {}", request.getMethod(), request.getRequestURI(), response.getStatus());
+            logger.debug("END {} {} {}", request.getMethod(), request.getRequestURI(), response.getStatus());
         }
     }
 }

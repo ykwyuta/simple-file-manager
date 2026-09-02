@@ -2,6 +2,25 @@
 
 本文書は、ファイル管理システムの機能、特にイレギュラーケースやエッジケースに焦点を当てたテストケースを定義します。
 
+## 自動テストとの対応
+
+各ケースを検証している自動テストは以下の通りです。「未対応」のケースは意図的に
+未実装であり、バックログとして残しています。
+
+| No. | 自動テスト |
+| :--- | :--- |
+| 1.1 / 1.2 / 1.3 | `FileServiceTest#updateFile_*`, `e2e/tests/08-file-operations.spec.js` (バージョン管理フォルダ/管理外フォルダ) |
+| 2.1 / 2.2 / 2.3 | `FileServiceTest#moveFile_*`, `e2e/tests/08-file-operations.spec.js` (リネームと移動) |
+| 3.1 | `e2e/tests/05-delete-and-restore.spec.js` (フォルダを復元すると配下も一緒に戻る) |
+| 3.2 | `ScheduledDeletionServiceTest#deletesEveryStoredVersionOfAFile` |
+| 3.3 | `FileServiceTest#restoreFileVersion_Success` + `softDeleteFile` 系 |
+| 3.4 | `e2e/tests/05-delete-and-restore.spec.js` (フォルダを復元すると配下も一緒に戻る) |
+| 4.x | `PermissionServiceTest`, `FileSpecificationTest`, `e2e/tests/03-file-authorization.spec.js` |
+
+> **3.4 について**: 以前はフォルダを論理削除しても配下に伝播せず、子は一覧にも
+> ゴミ箱にも現れないのにID指定でダウンロードできる状態でした。現在は削除・復元とも
+> サブツリー単位で行われます。
+
 ## 1. バージョン管理機能の動的変更
 
 ### 概要

@@ -13,6 +13,14 @@ import java.time.LocalDateTime;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+/**
+ * A file or folder's metadata. The bytes live in {@code FileStorage}.
+ *
+ * <p>
+ * Indexes are not declared here: the schema is owned by the migrations in
+ * {@code db/migration}, and Hibernate only validates it. An index added to an
+ * annotation would never be created. See docs/migrations.md.
+ */
 @Entity
 @Table(name = "files")
 public class FileEntity {
@@ -45,6 +53,14 @@ public class FileEntity {
     @Column(name = "storage_key")
     private String storageKey;
 
+    /** Byte length of the stored object. Null for directories. */
+    @Column(name = "size_bytes")
+    private Long sizeBytes;
+
+    /** MIME type reported at upload time. Null for directories. */
+    @Column(name = "content_type", length = 255)
+    private String contentType;
+
     @Column(name = "custom_tags", columnDefinition = "TEXT")
     private String customTags;
 
@@ -62,8 +78,16 @@ public class FileEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    @Column(name = "versioning_enabled")
-    private Boolean versioningEnabled;
+    /**
+     * Whether new versions are kept for files in this folder.
+     *
+     * <p>
+     * Defaults to {@code FALSE} rather than staying null: a null here made
+     * every folder page that had never toggled versioning fail to render with
+     * "cannot convert from null to boolean".
+     */
+    @Column(name = "versioning_enabled", nullable = false)
+    private Boolean versioningEnabled = Boolean.FALSE;
 
     @Column(name = "is_locked")
     private boolean isLocked = false;
@@ -87,6 +111,22 @@ public class FileEntity {
 
     public String getName() {
         return name;
+    }
+
+    public Long getSizeBytes() {
+        return sizeBytes;
+    }
+
+    public void setSizeBytes(Long sizeBytes) {
+        this.sizeBytes = sizeBytes;
+    }
+
+    public String getContentType() {
+        return contentType;
+    }
+
+    public void setContentType(String contentType) {
+        this.contentType = contentType;
     }
 
     public void setName(String name) {
@@ -186,7 +226,7 @@ public class FileEntity {
     }
 
     public void setVersioningEnabled(Boolean versioningEnabled) {
-        this.versioningEnabled = versioningEnabled;
+        this.versioningEnabled = versioningEnabled == null ? Boolean.FALSE : versioningEnabled;
     }
 
     public boolean isLocked() {

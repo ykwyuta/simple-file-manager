@@ -7,6 +7,9 @@ import com.example.filemanager.domain.User;
 import com.example.filemanager.exception.DuplicateFileException;
 import com.example.filemanager.exception.InvalidPermissionFormatException;
 import com.example.filemanager.domain.FileHistory;
+import com.example.filemanager.domain.Permission;
+import com.example.filemanager.exception.InvalidNameException;
+import com.example.filemanager.exception.ParentDeletedException;
 import com.example.filemanager.exception.ParentNotDirectoryException;
 import com.example.filemanager.exception.FileLockedException;
 import com.example.filemanager.exception.ResourceNotFoundException;
@@ -15,14 +18,13 @@ import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.FileSpecification;
 import com.example.filemanager.repository.GroupRepository;
 import com.example.filemanager.repository.UserRepository;
-import io.awspring.cloud.s3.S3Template;
+import com.example.filemanager.storage.FileStorage;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -41,86 +43,127 @@ public class FileService {
 
   private final FileRepository fileRepository;
   private final FileHistoryRepository fileHistoryRepository;
-  private final S3Template s3Template;
+  private final FileStorage fileStorage;
   private final PermissionService permissionService;
   private final UserRepository userRepository;
   private final GroupRepository groupRepository;
 
-  private final String bucketName;
+
+  /** Upper bound for file and folder names, matching the DB column. */
+  static final int MAX_NAME_LENGTH = 255;
 
   public FileService(
       FileRepository fileRepository,
       FileHistoryRepository fileHistoryRepository,
-      S3Template s3Template,
+      FileStorage fileStorage,
       PermissionService permissionService,
       UserRepository userRepository,
-      GroupRepository groupRepository,
-      @Value("${S3_BUCKET_NAME}") String bucketName) {
+      GroupRepository groupRepository) {
     this.fileRepository = fileRepository;
     this.fileHistoryRepository = fileHistoryRepository;
-    this.s3Template = s3Template;
+    this.fileStorage = fileStorage;
     this.permissionService = permissionService;
     this.userRepository = userRepository;
     this.groupRepository = groupRepository;
-    this.bucketName = bucketName;
+  }
+
+  /** The authenticated principal, as a {@link User}. */
+  private User currentUser() {
+    return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+  }
+
+  /**
+   * Validates a file or folder name.
+   *
+   * <p>
+   * Names travel into S3 keys, Content-Disposition headers and the UI, so path
+   * separators and the relative-path entries are rejected outright rather than
+   * sanitised — a silently rewritten name is harder to reason about than a
+   * refusal.
+   */
+  static String validateName(String rawName) {
+    String name = rawName == null ? "" : rawName.trim();
+    if (name.isEmpty()) {
+      throw new InvalidNameException("名前を入力してください。");
+    }
+    if (name.length() > MAX_NAME_LENGTH) {
+      throw new InvalidNameException("名前は" + MAX_NAME_LENGTH + "文字以内で入力してください。");
+    }
+    if (name.equals(".") || name.equals("..")) {
+      throw new InvalidNameException("'.' および '..' は名前として使用できません。");
+    }
+    if (name.contains("/") || name.contains("\\")) {
+      throw new InvalidNameException("名前にパス区切り文字 (/ \\) は使用できません。");
+    }
+    for (char c : name.toCharArray()) {
+      if (c < 0x20 || c == 0x7F) {
+        throw new InvalidNameException("名前に制御文字は使用できません。");
+      }
+    }
+    return name;
+  }
+
+  /** Parses and validates a three-digit permission string such as "755". */
+  static int parsePermissions(String permissions) {
+    if (permissions == null || !permissions.matches("[0-7]{3}")) {
+      throw new InvalidPermissionFormatException(
+          "パーミッションは各桁が0〜7の3桁の数字で指定してください (例: '755')。");
+    }
+    return Integer.parseInt(permissions);
   }
 
   @Transactional
   public FileEntity uploadFile(@NonNull MultipartFile file, Long parentFolderId, @NonNull String permissions)
       throws IOException {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
 
     FileEntity parent = null;
     if (parentFolderId != null) {
       parent = fileRepository
           .findByIdAndDeletedAtIsNull(parentFolderId)
           .orElseThrow(
-              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentFolderId));
+              () -> new ResourceNotFoundException("親フォルダ (id: " + parentFolderId + ") が見つかりません。"));
       if (!parent.isDirectory()) {
         throw new ParentNotDirectoryException(
-            "Parent with id " + parentFolderId + " is not a directory.");
+            "指定された親 (id: " + parentFolderId + ") はフォルダではありません。");
+      }
+      if (!permissionService.canWrite(parent, currentUser)) {
+        throw new AccessDeniedException("このフォルダにファイルを作成する権限がありません。");
       }
     }
 
+    String fileName = validateName(file.getOriginalFilename());
+
     fileRepository
-        .findByParentAndNameAndDeletedAtIsNull(parent, file.getOriginalFilename())
+        .findByParentAndNameAndDeletedAtIsNull(parent, fileName)
         .ifPresent(
             f -> {
               throw new DuplicateFileException(
-                  "A file or directory with the name '"
-                      + file.getOriginalFilename()
-                      + "' already exists in this location.");
+                  "'" + fileName + "' と同じ名前のファイルまたはフォルダが既に存在します。");
             });
 
     Group group = currentUser
         .getGroups()
         .stream()
         .findFirst()
-        .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
+        .orElseThrow(() -> new IllegalStateException("ユーザーがどのグループにも所属していません。"));
 
     FileEntity newFile = new FileEntity();
-    newFile.setName(file.getOriginalFilename());
+    newFile.setName(fileName);
     newFile.setDirectory(false);
     newFile.setParent(parent);
     newFile.setOwner(currentUser);
     newFile.setGroup(group);
-    try {
-      // Store permissions as decimal integer (e.g., 755, 644)
-      int perm = Integer.parseInt(permissions);
-      // Validate each digit is 0-7
-      if (perm < 0 || perm > 777 || !permissions.matches("[0-7]{3}")) {
-        throw new InvalidPermissionFormatException(
-            "Invalid permission format. Each digit must be 0-7 (e.g., '755').");
-      }
-      newFile.setPermissions(perm);
-    } catch (NumberFormatException e) {
-      throw new InvalidPermissionFormatException(
-          "Invalid permission format. Please use a 3-digit number (e.g., '755').");
-    }
+    newFile.setPermissions(parsePermissions(permissions));
+    newFile.setSizeBytes(file.getSize());
+    newFile.setContentType(file.getContentType());
 
-    String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
-    String s3Key = UUID.randomUUID() + "/" + originalFilename;
-    s3Template.upload(Objects.requireNonNull(bucketName), s3Key, file.getInputStream());
+    // The key is a bare UUID: putting the user-supplied name in the storage
+    // path made keys depend on the platform's filename encoding and gave
+    // untrusted input a say in where bytes land. The display name lives in the
+    // database.
+    String s3Key = UUID.randomUUID().toString();
+    fileStorage.upload(s3Key, file.getInputStream());
     newFile.setStorageKey(s3Key);
 
     return fileRepository.save(newFile);
@@ -128,17 +171,17 @@ public class FileService {
 
   @Transactional
   public FileEntity updateFile(@NonNull Long fileId, @NonNull MultipartFile file) throws IOException {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = findFileById(fileId); // This already checks read permission
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to write to this file.");
+      throw new AccessDeniedException("このファイルを更新する権限がありません。");
     }
 
     checkFileLock(fileEntity, currentUser);
 
     if (fileEntity.isDirectory()) {
-      throw new IllegalArgumentException("Cannot upload content to a directory.");
+      throw new IllegalArgumentException("フォルダにファイル内容をアップロードすることはできません。");
     }
 
     FileEntity parent = fileEntity.getParent();
@@ -160,43 +203,48 @@ public class FileService {
       fileHistoryRepository.save(history);
 
       // Upload new file to S3 with a new key
-      String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
-      String newS3Key = UUID.randomUUID() + "/" + originalFilename;
-      s3Template.upload(Objects.requireNonNull(bucketName), newS3Key, file.getInputStream());
+      String newS3Key = UUID.randomUUID().toString();
+      fileStorage.upload(newS3Key, file.getInputStream());
       fileEntity.setStorageKey(newS3Key); // Update entity with the new key
     } else {
-      // Versioning is not enabled, just overwrite the file in S3
-      s3Template.upload(Objects.requireNonNull(bucketName), Objects.requireNonNull(fileEntity.getStorageKey()),
-          file.getInputStream());
+      // Versioning is not enabled: overwrite in place. A file with no key yet
+      // (a metadata row whose upload never completed) gets a fresh one rather
+      // than failing with a null dereference.
+      String key = fileEntity.getStorageKey();
+      if (key == null || key.isEmpty()) {
+        key = UUID.randomUUID().toString();
+        fileEntity.setStorageKey(key);
+      }
+      fileStorage.upload(key, file.getInputStream());
     }
 
     // Update the name in case it has changed
-    fileEntity.setName(Objects.requireNonNull(file.getOriginalFilename()));
+    fileEntity.setName(validateName(file.getOriginalFilename()));
+    fileEntity.setSizeBytes(file.getSize());
+    fileEntity.setContentType(file.getContentType());
     return fileRepository.save(fileEntity);
   }
 
   public byte[] downloadFile(@NonNull FileEntity fileEntity) throws IOException {
     if (fileEntity.isDirectory()) {
-      throw new IllegalArgumentException("Cannot download a directory.");
+      throw new IllegalArgumentException("フォルダはダウンロードできません。");
     }
     if (fileEntity.getStorageKey() == null) {
       // This case should ideally not happen for a file, but as a safeguard:
       throw new IllegalStateException("File entity is missing storage key.");
     }
-    return s3Template.download(Objects.requireNonNull(bucketName), Objects.requireNonNull(fileEntity.getStorageKey()))
-        .getInputStream()
-        .readAllBytes();
+    return fileStorage.download(Objects.requireNonNull(fileEntity.getStorageKey()));
   }
 
   @Transactional(readOnly = true)
   public FileEntity findFileById(@NonNull Long fileId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
     if (!permissionService.canRead(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to access this file.");
+      throw new AccessDeniedException("このファイルにアクセスする権限がありません。");
     }
 
     return fileEntity;
@@ -204,51 +252,51 @@ public class FileService {
 
   @Transactional(readOnly = true)
   public List<FileEntity> listFiles(Long parentId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity parent = null;
     if (parentId != null) {
       parent = fileRepository
           .findByIdAndDeletedAtIsNull(parentId)
           .orElseThrow(
-              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentId));
+              () -> new ResourceNotFoundException("フォルダ (id: " + parentId + ") が見つかりません。"));
       if (!permissionService.canRead(parent, currentUser)) {
-        throw new AccessDeniedException("You do not have permission to access this folder.");
+        throw new AccessDeniedException("このフォルダにアクセスする権限がありません。");
       }
     }
 
-    List<FileEntity> files = fileRepository.findAllByParentAndDeletedAtIsNull(parent);
-    return files.stream()
-        .filter(file -> permissionService.canRead(file, currentUser))
-        .collect(Collectors.toList());
+    return fileRepository.findAll(
+        FileSpecification.isNotDeleted()
+            .and(FileSpecification.hasParent(parent))
+            .and(FileSpecification.isReadableBy(currentUser)));
   }
 
   @Transactional(readOnly = true)
   public Page<FileEntity> listFiles(Long parentId, @NonNull Pageable pageable) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity parent = null;
     if (parentId != null) {
       parent = fileRepository
           .findByIdAndDeletedAtIsNull(parentId)
           .orElseThrow(
-              () -> new ResourceNotFoundException("Parent folder not found with id: " + parentId));
+              () -> new ResourceNotFoundException("フォルダ (id: " + parentId + ") が見つかりません。"));
       if (!permissionService.canRead(parent, currentUser)) {
-        throw new AccessDeniedException("You do not have permission to access this folder.");
+        throw new AccessDeniedException("このフォルダにアクセスする権限がありません。");
       }
     }
 
-    Page<FileEntity> filesPage = fileRepository.findAllByParentAndDeletedAtIsNull(parent, pageable);
-
-    // Filter files based on read permission
-    List<FileEntity> filteredFiles = filesPage.getContent().stream()
-        .filter(file -> permissionService.canRead(file, currentUser))
-        .collect(Collectors.toList());
-
-    return new PageImpl<>(Objects.requireNonNull(filteredFiles), pageable, filesPage.getTotalElements());
+    // Filtering happens in SQL so that the reported total matches what the user
+    // can actually see. Paging first and filtering afterwards produces short
+    // pages and an inflated item count.
+    return fileRepository.findAll(
+        FileSpecification.isNotDeleted()
+            .and(FileSpecification.hasParent(parent))
+            .and(FileSpecification.isReadableBy(currentUser)),
+        pageable);
   }
 
   @Transactional
   public FileEntity createDirectory(@NonNull FolderRequest request) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
 
     FileEntity parent = null;
     if (request.getParentFolderId() != null) {
@@ -256,21 +304,24 @@ public class FileService {
           .findByIdAndDeletedAtIsNull(request.getParentFolderId())
           .orElseThrow(
               () -> new ResourceNotFoundException(
-                  "Parent folder not found with id: " + request.getParentFolderId()));
+                  "親フォルダ (id: " + request.getParentFolderId() + ") が見つかりません。"));
       if (!parent.isDirectory()) {
         throw new ParentNotDirectoryException(
-            "Parent with id " + request.getParentFolderId() + " is not a directory.");
+            "指定された親 (id: " + request.getParentFolderId() + ") はフォルダではありません。");
+      }
+      if (!permissionService.canWrite(parent, currentUser)) {
+        throw new AccessDeniedException("このフォルダにフォルダを作成する権限がありません。");
       }
     }
 
+    String folderName = validateName(request.getName());
+
     fileRepository
-        .findByParentAndNameAndDeletedAtIsNull(parent, request.getName())
+        .findByParentAndNameAndDeletedAtIsNull(parent, folderName)
         .ifPresent(
             f -> {
               throw new DuplicateFileException(
-                  "A file or directory with the name '"
-                      + request.getName()
-                      + "' already exists in this location.");
+                  "'" + folderName + "' と同じ名前のファイルまたはフォルダが既に存在します。");
             });
 
     // The primary group of the user is used as the folder's group.
@@ -279,73 +330,82 @@ public class FileService {
         .getGroups()
         .stream()
         .findFirst()
-        .orElseThrow(() -> new IllegalStateException("User does not belong to any group."));
+        .orElseThrow(() -> new IllegalStateException("ユーザーがどのグループにも所属していません。"));
 
     FileEntity newDirectory = new FileEntity();
-    newDirectory.setName(request.getName());
+    newDirectory.setName(folderName);
     newDirectory.setDirectory(true);
     newDirectory.setParent(parent);
     newDirectory.setOwner(currentUser);
     newDirectory.setGroup(group);
-
-    // Store permissions as decimal integer (e.g., 755, 644)
-    int perm = Integer.parseInt(request.getPermissions());
-    if (perm < 0 || perm > 777 || !request.getPermissions().matches("[0-7]{3}")) {
-      throw new InvalidPermissionFormatException(
-          "Invalid permission format. Each digit must be 0-7 (e.g., '755').");
-    }
-    newDirectory.setPermissions(perm);
+    newDirectory.setPermissions(parsePermissions(request.getPermissions()));
 
     return fileRepository.save(newDirectory);
   }
 
   @Transactional
   public void softDeleteFile(@NonNull Long fileId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to delete this file.");
+      throw new AccessDeniedException("このファイルを削除する権限がありません。");
     }
 
     checkFileLock(fileEntity, currentUser);
 
-    fileEntity.setDeletedAt(LocalDateTime.now());
-    fileRepository.save(fileEntity);
+    // Stamping every descendant with the *same* timestamp records that they
+    // went away as one unit, which is what lets restore put back exactly the
+    // subtree this delete removed. Without the cascade the children stay
+    // "not deleted": invisible in every listing and in the trash, still
+    // downloadable by id, and never picked up by the hard-delete job.
+    LocalDateTime deletedAt = LocalDateTime.now();
+    softDeleteRecursive(fileEntity, deletedAt);
+  }
+
+  private void softDeleteRecursive(FileEntity entity, LocalDateTime deletedAt) {
+    entity.setDeletedAt(deletedAt);
+    fileRepository.save(entity);
+    if (entity.isDirectory()) {
+      for (FileEntity child : fileRepository.findAllByParentAndDeletedAtIsNull(entity)) {
+        softDeleteRecursive(child, deletedAt);
+      }
+    }
   }
 
   @Transactional
   public FileEntity renameFile(@NonNull Long fileId, @NonNull String newName) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to rename this file.");
+      throw new AccessDeniedException("このファイルの名前を変更する権限がありません。");
     }
 
     checkFileLock(fileEntity, currentUser);
 
+    String validated = validateName(newName);
     fileRepository
-        .findByParentAndNameAndDeletedAtIsNull(fileEntity.getParent(), newName)
+        .findByParentAndNameAndDeletedAtIsNull(fileEntity.getParent(), validated)
         .ifPresent(
             f -> {
-              throw new DuplicateFileException(
-                  "A file or directory with the name '"
-                      + newName
-                      + "' already exists in this location.");
+              if (!f.getId().equals(fileEntity.getId())) {
+                throw new DuplicateFileException(
+                    "'" + validated + "' と同じ名前のファイルまたはフォルダが既に存在します。");
+              }
             });
 
-    fileEntity.setName(newName);
+    fileEntity.setName(validated);
     return fileRepository.save(fileEntity);
   }
 
   @Transactional(readOnly = true)
   public List<FileEntity> searchFiles(String name, String tags) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     Specification<FileEntity> spec = FileSpecification.isNotDeleted();
 
     if (StringUtils.hasText(name)) {
@@ -355,22 +415,18 @@ public class FileService {
       spec = spec.and(FileSpecification.tagsContain(tags));
     }
 
-    List<FileEntity> allFiles = fileRepository.findAll(spec);
-
-    return allFiles.stream()
-        .filter(file -> permissionService.canRead(file, currentUser))
-        .collect(Collectors.toList());
+    return fileRepository.findAll(spec.and(FileSpecification.isReadableBy(currentUser)));
   }
 
   @Transactional
   public FileEntity moveFile(@NonNull Long fileId, @NonNull Long newParentId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileToMove = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
     if (!permissionService.canWrite(fileToMove, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to move this file.");
+      throw new AccessDeniedException("このファイルを移動する権限がありません。");
     }
 
     checkFileLock(fileToMove, currentUser);
@@ -378,16 +434,16 @@ public class FileService {
     FileEntity destinationFolder = fileRepository
         .findByIdAndDeletedAtIsNull(newParentId)
         .orElseThrow(
-            () -> new ResourceNotFoundException("Destination folder not found with id: " + newParentId));
+            () -> new ResourceNotFoundException("移動先フォルダ (id: " + newParentId + ") が見つかりません。"));
 
     if (!destinationFolder.isDirectory()) {
       throw new ParentNotDirectoryException(
-          "Destination with id " + newParentId + " is not a directory.");
+          "移動先 (id: " + newParentId + ") はフォルダではありません。");
     }
 
     if (!permissionService.canWrite(destinationFolder, currentUser)) {
       throw new AccessDeniedException(
-          "You do not have permission to move files into the destination folder.");
+          "移動先フォルダに書き込む権限がありません。");
     }
 
     fileRepository
@@ -406,43 +462,75 @@ public class FileService {
 
   @Transactional(readOnly = true)
   public List<FileEntity> listDeletedFiles() {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    List<FileEntity> deletedFiles = fileRepository.findAllByDeletedAtIsNotNull();
+    User currentUser = currentUser();
+    List<FileEntity> deletedFiles = fileRepository.findAll(
+        FileSpecification.isDeleted().and(FileSpecification.isReadableBy(currentUser)));
 
-    // Filter the list to only include files the user has permission to read
+    // Show only the top of each deleted subtree. A child that vanished because
+    // its parent was deleted is restored with the parent, so listing it
+    // separately would offer a restore the user cannot actually perform.
     return deletedFiles.stream()
-        .filter(file -> permissionService.canRead(file, currentUser))
+        .filter(file -> {
+          FileEntity parent = file.getParent();
+          return parent == null || parent.getDeletedAt() == null;
+        })
         .collect(Collectors.toList());
   }
 
   @Transactional
   public FileEntity restoreFile(@NonNull Long fileId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNotNull(fileId)
         .orElseThrow(
-            () -> new ResourceNotFoundException("Deleted file not found with id: " + fileId));
+            () -> new ResourceNotFoundException("削除済みファイル (id: " + fileId + ") が見つかりません。"));
 
     // Check if the user has write permission on the file to restore it
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to restore this file.");
+      throw new AccessDeniedException("このファイルを復元する権限がありません。");
     }
 
-    fileEntity.setDeletedAt(null);
-    return fileRepository.save(fileEntity);
+    FileEntity parent = fileEntity.getParent();
+    if (parent != null && parent.getDeletedAt() != null) {
+      throw new ParentDeletedException(
+          "親フォルダ '" + parent.getName() + "' が削除されています。先に親フォルダを復元してください。");
+    }
+
+    LocalDateTime deletedAt = fileEntity.getDeletedAt();
+    restoreRecursive(fileEntity, deletedAt);
+    return fileEntity;
+  }
+
+  /**
+   * Restores the subtree that disappeared in the same delete.
+   *
+   * <p>
+   * Children deleted separately <em>before</em> the parent carry a different
+   * timestamp and stay in the trash, so restoring a folder never resurrects
+   * something the user had already thrown away on its own.
+   */
+  private void restoreRecursive(FileEntity entity, LocalDateTime deletedAt) {
+    List<FileEntity> cascaded = entity.isDirectory()
+        ? fileRepository.findAllByParentAndDeletedAt(entity, deletedAt)
+        : List.of();
+    entity.setDeletedAt(null);
+    fileRepository.save(entity);
+    for (FileEntity child : cascaded) {
+      restoreRecursive(child, deletedAt);
+    }
   }
 
   @Transactional
   public FileEntity toggleVersioning(@NonNull Long folderId, boolean enable) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity folder = findFileById(folderId); // This checks for existence and read permission
 
     if (!folder.isDirectory()) {
-      throw new IllegalArgumentException("Versioning can only be enabled on directories.");
+      throw new IllegalArgumentException("バージョン管理はフォルダにのみ設定できます。");
     }
 
     if (!permissionService.canWrite(folder, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to modify this folder.");
+      throw new AccessDeniedException("このフォルダを変更する権限がありません。");
     }
 
     folder.setVersioningEnabled(enable);
@@ -455,7 +543,7 @@ public class FileService {
     FileEntity fileEntity = findFileById(fileId); // Checks read permission
 
     if (fileEntity.isDirectory()) {
-      throw new IllegalArgumentException("Cannot get versions for a directory.");
+      throw new IllegalArgumentException("フォルダにはバージョン履歴がありません。");
     }
 
     return fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId);
@@ -463,17 +551,21 @@ public class FileService {
 
   @Transactional
   public FileEntity restoreFileVersion(@NonNull Long fileId, @NonNull Long versionId) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = findFileById(fileId); // Checks read permission
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to write to this file.");
+      throw new AccessDeniedException("このファイルを更新する権限がありません。");
     }
 
+    // Resolve the version *within this file*. Looking it up by id alone lets a
+    // caller graft another user's stored object onto a file they own and read
+    // its contents.
     FileHistory history = fileHistoryRepository
-        .findById(versionId)
+        .findByIdAndFileEntityId(versionId, fileId)
         .orElseThrow(
-            () -> new ResourceNotFoundException("File version not found with id: " + versionId));
+            () -> new ResourceNotFoundException(
+                "バージョン (id: " + versionId + ") はこのファイルに存在しません。"));
 
     // Create a new history entry for the current state before restoring
     int latestVersion = fileHistoryRepository
@@ -496,27 +588,26 @@ public class FileService {
   }
 
   @Transactional
-  public void updateLockStatus(@NonNull Long fileId, boolean lock, @NonNull String username) {
-    User currentUser = userRepository.findByUsername(username)
-        .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+  public void updateLockStatus(@NonNull Long fileId, boolean lock) {
+    User currentUser = currentUser();
     FileEntity fileEntity = findFileById(fileId);
 
     if (fileEntity.isDirectory()) {
-      throw new IllegalArgumentException("Cannot lock a directory.");
+      throw new IllegalArgumentException("フォルダはロックできません。");
     }
 
     FileEntity parent = fileEntity.getParent();
     if (parent == null || parent.getVersioningEnabled() == null || !parent.getVersioningEnabled()) {
-      throw new IllegalStateException("File lock can only be used for files in a version-controlled folder.");
+      throw new IllegalStateException("ロックはバージョン管理が有効なフォルダ内のファイルにのみ使用できます。");
     }
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to change the lock status of this file.");
+      throw new AccessDeniedException("このファイルのロック状態を変更する権限がありません。");
     }
 
     if (lock) {
-      if (fileEntity.isLocked() && !fileEntity.getLockedBy().equals(currentUser)) {
-        throw new FileLockedException("File is already locked by another user.");
+      if (fileEntity.isLocked() && !isLockedBy(fileEntity, currentUser)) {
+        throw new FileLockedException("このファイルは他のユーザーがロックしています。");
       }
       fileEntity.setLocked(true);
       fileEntity.setLockedBy(currentUser);
@@ -528,8 +619,8 @@ public class FileService {
         // For now, we'll just let it proceed silently.
         return;
       }
-      if (!fileEntity.getLockedBy().equals(currentUser)) {
-        throw new AccessDeniedException("You cannot unlock a file locked by another user.");
+      if (!isLockedBy(fileEntity, currentUser)) {
+        throw new AccessDeniedException("他のユーザーがロックしたファイルは解除できません。");
       }
       fileEntity.setLocked(false);
       fileEntity.setLockedBy(null);
@@ -541,29 +632,18 @@ public class FileService {
 
   @Transactional
   public FileEntity changePermissions(@NonNull Long fileId, @NonNull String newPermissions) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
-    // Only the owner can change permissions
-    if (!fileEntity.getOwner().getId().equals(currentUser.getId())) {
-      throw new AccessDeniedException("Only the owner can change permissions.");
+    // Only the owner (or an administrator) can change permissions
+    if (!permissionService.isAdmin(currentUser)
+        && !fileEntity.getOwner().getId().equals(currentUser.getId())) {
+      throw new AccessDeniedException("パーミッションを変更できるのは所有者のみです。");
     }
 
-    try {
-      // Parse as decimal integer (e.g., 755, 644)
-      int permissions = Integer.parseInt(newPermissions);
-      // Validate that each digit is 0-7 and it's a 3-digit number
-      if (permissions < 0 || permissions > 777 || !newPermissions.matches("[0-7]{3}")) {
-        throw new InvalidPermissionFormatException("Each digit must be 0-7 (e.g., '755').");
-      }
-      fileEntity.setPermissions(permissions);
-    } catch (NumberFormatException e) {
-      throw new InvalidPermissionFormatException(
-          "Invalid permission format. Please use a 3-digit number (e.g., '755').");
-    }
-
+    fileEntity.setPermissions(parsePermissions(newPermissions));
     return fileRepository.save(fileEntity);
   }
 
@@ -575,9 +655,12 @@ public class FileService {
     // findFileById checks for read permission on the folder itself
     FileEntity folder = findFileById(folderId);
 
+    User currentUser = currentUser();
     List<FileEntity> breadcrumbs = new ArrayList<>();
     FileEntity current = folder;
-    while (current != null) {
+    // Stop at the first ancestor the user cannot read: a trail is a navigation
+    // aid, and it should not name folders the user is not allowed to see.
+    while (current != null && permissionService.canRead(current, currentUser)) {
       breadcrumbs.add(0, current);
       current = current.getParent();
     }
@@ -585,27 +668,37 @@ public class FileService {
   }
 
   private void checkFileLock(FileEntity fileEntity, User currentUser) {
-    if (fileEntity.isLocked() && (fileEntity.getLockedBy() == null || !fileEntity.getLockedBy().equals(currentUser))) {
-      throw new FileLockedException("File is locked by another user and cannot be modified.");
+    if (fileEntity.isLocked() && !isLockedBy(fileEntity, currentUser)) {
+      throw new FileLockedException("このファイルは他のユーザーがロックしているため変更できません。");
     }
+  }
+
+  /**
+   * Whether {@code user} holds the lock on {@code fileEntity}.
+   *
+   * <p>
+   * Compares identifiers rather than instances. {@code getLockedBy()} returns a
+   * Hibernate proxy, and comparing that to the authenticated principal by
+   * reference was always false — so the lock holder could neither release their
+   * own lock nor edit the file they had locked.
+   */
+  private boolean isLockedBy(FileEntity fileEntity, User user) {
+    User lockedBy = fileEntity.getLockedBy();
+    return lockedBy != null && user != null && lockedBy.getId().equals(user.getId());
   }
 
   @Transactional
   public FileEntity changeOwner(@NonNull Long fileId, @NonNull Long newOwnerId, @NonNull Long newGroupId,
       boolean recursive) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
 
-    // Check if current user is admin
-    boolean isAdmin = currentUser.getGroups().stream()
-        .anyMatch(g -> "admins".equals(g.getName()));
-
-    if (!isAdmin) {
-      throw new AccessDeniedException("Only admins can change file ownership.");
+    if (!permissionService.isAdmin(currentUser)) {
+      throw new AccessDeniedException("所有者を変更できるのは管理者のみです。");
     }
 
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
     User newOwner = userRepository.findById(newOwnerId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + newOwnerId));
@@ -639,13 +732,13 @@ public class FileService {
 
   @Transactional
   public FileEntity updateTags(@NonNull Long fileId, @NonNull String tags) {
-    User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    User currentUser = currentUser();
     FileEntity fileEntity = fileRepository
         .findByIdAndDeletedAtIsNull(fileId)
-        .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
+        .orElseThrow(() -> new ResourceNotFoundException("ファイル (id: " + fileId + ") が見つかりません。"));
 
     if (!permissionService.canWrite(fileEntity, currentUser)) {
-      throw new AccessDeniedException("You do not have permission to modify tags for this file.");
+      throw new AccessDeniedException("このファイルのタグを変更する権限がありません。");
     }
 
     checkFileLock(fileEntity, currentUser);

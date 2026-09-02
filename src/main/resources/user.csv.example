@@ -1,0 +1,5 @@
+# Copy to user.csv to seed accounts at first startup. Passwords here are stored
+# in plain text, so use this only for local development and never commit a filled-in copy.
+username,password,groups
+alice,change-me,"developers,users"
+bob,change-me,users

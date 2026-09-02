@@ -278,3 +278,183 @@ h1 {
     border-color: var(--accent-color);
     transform: scale(1.05);
 }
+/* ---------------------------------------------------------------------------
+   Icons
+
+   Icons are a local SVG sprite (see templates/fragments/layout.html) rather
+   than a CDN font: when the CDN was unreachable every action button rendered
+   as an empty box.
+   --------------------------------------------------------------------------- */
+.icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    flex: none;
+}
+
+.icon-sm {
+    width: 0.85em;
+    height: 0.85em;
+    margin-left: 0.5rem;
+}
+
+.file-icon {
+    width: 1.15em;
+    height: 1.15em;
+    color: #94a3b8;
+}
+
+.folder-icon {
+    color: #fbbf24;
+}
+
+.state-versioned {
+    color: #22c55e;
+}
+
+.state-locked {
+    color: #ef4444;
+}
+
+/* ---------------------------------------------------------------------------
+   Header: identity and session controls
+   --------------------------------------------------------------------------- */
+.nav-link {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.current-user {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Login
+   --------------------------------------------------------------------------- */
+.login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1.5rem;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 22rem;
+    background: var(--surface-color, #1e293b);
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.login-card h1 {
+    margin: 0 0 1.5rem;
+    font-size: 1.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.login-submit {
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Table states
+   --------------------------------------------------------------------------- */
+.empty-state {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2.5rem 1rem;
+}
+
+td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Visible to screen readers, not on screen. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+:focus-visible {
+    outline: 2px solid var(--primary-color, #38bdf8);
+    outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Small screens: the layout had no viewport meta tag and no breakpoints, so
+   phones rendered a scaled-down 980px desktop page.
+   --------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+
+    header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    header>div {
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
+    }
+
+    header h1 {
+        font-size: 1.5rem;
+    }
+
+    /* The search field takes the width it needs; the rest of the header
+       controls sit on one row rather than each claiming a line. */
+    .search-bar {
+        flex: 1 1 100%;
+    }
+
+    .user-menu {
+        margin-left: auto;
+    }
+
+    /* The file table keeps its columns and scrolls inside the card, so the
+       page body itself never scrolls sideways. */
+    .card {
+        overflow-x: auto;
+    }
+
+    .file-list {
+        min-width: 44rem;
+    }
+
+    /* Comfortable tap targets. */
+    .btn {
+        min-height: 2.75rem;
+        white-space: nowrap;
+    }
+
+    /* Upload / New folder / Trash wrap instead of pushing Trash off-screen. */
+    .actions {
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+    }
+}

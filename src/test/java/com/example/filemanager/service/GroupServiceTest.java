@@ -2,6 +2,7 @@ package com.example.filemanager.service;
 
 import com.example.filemanager.domain.Group;
 import com.example.filemanager.exception.GroupNotFoundException;
+import com.example.filemanager.repository.FileRepository;
 import com.example.filemanager.repository.GroupRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,6 +22,9 @@ class GroupServiceTest {
 
     @Mock
     private GroupRepository groupRepository;
+
+    @Mock
+    private FileRepository fileRepository;
 
     @InjectMocks
     private GroupService groupService;
@@ -63,8 +68,50 @@ class GroupServiceTest {
 
     @Test
     void deleteGroup() {
+        Group admins = new Group();
+        admins.setId(99L);
+        admins.setName("admins");
+
+        when(groupRepository.findById(1L)).thenReturn(Optional.of(group));
+        when(groupRepository.findByName("admins")).thenReturn(Optional.of(admins));
+        when(fileRepository.findAllByGroup(group)).thenReturn(java.util.List.of());
+
         groupService.deleteGroup(1L);
+
         verify(groupRepository, times(1)).deleteById(1L);
+    }
+
+    @Test
+    void deleteGroup_TransfersOwnedFilesToAdmins() {
+        // Files must not be left pointing at a group that no longer exists.
+        Group admins = new Group();
+        admins.setId(99L);
+        admins.setName("admins");
+
+        com.example.filemanager.domain.FileEntity owned = new com.example.filemanager.domain.FileEntity();
+        owned.setId(5L);
+        owned.setGroup(group);
+
+        when(groupRepository.findById(1L)).thenReturn(Optional.of(group));
+        when(groupRepository.findByName("admins")).thenReturn(Optional.of(admins));
+        when(fileRepository.findAllByGroup(group)).thenReturn(java.util.List.of(owned));
+
+        groupService.deleteGroup(1L);
+
+        assertEquals(admins, owned.getGroup());
+        verify(fileRepository, times(1)).save(owned);
+        verify(groupRepository, times(1)).deleteById(1L);
+    }
+
+    @Test
+    void deleteGroup_RefusesToDeleteAdminsGroup() {
+        Group admins = new Group();
+        admins.setId(1L);
+        admins.setName("admins");
+        when(groupRepository.findById(1L)).thenReturn(Optional.of(admins));
+
+        assertThrows(IllegalArgumentException.class, () -> groupService.deleteGroup(1L));
+        verify(groupRepository, never()).deleteById(anyLong());
     }
 
     @Test
