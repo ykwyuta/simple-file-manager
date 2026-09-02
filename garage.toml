@@ -15,8 +15,9 @@ compression_level = 1
 rpc_bind_addr = "[::]:3901"
 # The public address must be connectable from other containers
 rpc_public_addr = "garage:3901"
-# IMPORTANT: Replace with a real secret in production (e.g., openssl rand -hex 32)
-rpc_secret = "0000000000000000000000000000000000000000000000000000000000000000"
+# Secrets are supplied through the GARAGE_RPC_SECRET / GARAGE_ADMIN_TOKEN /
+# GARAGE_METRICS_TOKEN environment variables (see .env.example), which override
+# this file. Nothing secret is committed here.
 
 # S3 API endpoint configuration
 [s3_api]
@@ -26,7 +27,5 @@ api_bind_addr = "[::]:3900"
 # Admin API configuration
 [admin]
 api_bind_addr = "[::]:3903"
-# IMPORTANT: Replace with a secure token in production
-admin_token = "CHANGE_ME_IN_PRODUCTION"
-# IMPORTANT: Replace with a secure token in production
-metrics_token = "CHANGE_ME_IN_PRODUCTION"
+# admin_token / metrics_token come from GARAGE_ADMIN_TOKEN and
+# GARAGE_METRICS_TOKEN in the environment.

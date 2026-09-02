@@ -1,9 +1,12 @@
 package com.example.filemanager.service;
 
 import com.example.filemanager.domain.FileEntity;
+import com.example.filemanager.domain.FileHistory;
+import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
-import io.awspring.cloud.s3.S3Template;
+import com.example.filemanager.storage.FileStorage;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,18 +22,17 @@ public class ScheduledDeletionService {
     private static final Logger logger = LoggerFactory.getLogger(ScheduledDeletionService.class);
 
     private final FileRepository fileRepository;
-    private final S3Template s3Template;
-
-    private final String bucketName;
+    private final FileHistoryRepository fileHistoryRepository;
+    private final FileStorage fileStorage;
 
     @Value("${file.deletion.retention-period-days:7}")
     private int retentionPeriodDays;
 
-    public ScheduledDeletionService(FileRepository fileRepository, S3Template s3Template,
-            @Value("${S3_BUCKET_NAME}") @NonNull String bucketName) {
+    public ScheduledDeletionService(FileRepository fileRepository,
+            FileHistoryRepository fileHistoryRepository, FileStorage fileStorage) {
         this.fileRepository = fileRepository;
-        this.s3Template = s3Template;
-        this.bucketName = bucketName;
+        this.fileHistoryRepository = fileHistoryRepository;
+        this.fileStorage = fileStorage;
     }
 
     @Scheduled(cron = "${file.deletion.cron:0 0 2 * * *}") // Defaults to 2 AM daily
@@ -39,7 +41,8 @@ public class ScheduledDeletionService {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionPeriodDays);
         logger.info("Running scheduled deletion job. Deleting files soft-deleted before {}", cutoff);
 
-        List<FileEntity> filesToDelete = fileRepository.findAllByDeletedAtBefore(cutoff);
+        List<FileEntity> filesToDelete = new java.util.ArrayList<>(
+                fileRepository.findAllByDeletedAtBefore(cutoff));
 
         if (filesToDelete.isEmpty()) {
             logger.info("No files found for permanent deletion.");
@@ -48,27 +51,55 @@ public class ScheduledDeletionService {
 
         logger.info("Found {} files to delete permanently.", filesToDelete.size());
 
+        int deleted = 0;
+        int failed = 0;
+        // Children are hard-deleted before their parents so a failure part-way
+        // through never leaves a row pointing at a missing parent.
+        filesToDelete.sort(Comparator.comparingInt(ScheduledDeletionService::depthOf).reversed());
+
         for (FileEntity file : filesToDelete) {
-            // Delete from S3 only if it's a file and has a storage key
-            if (!file.isDirectory() && file.getStorageKey() != null && !file.getStorageKey().isEmpty()) {
-                try {
-                    s3Template.deleteObject(java.util.Objects.requireNonNull(bucketName),
-                            java.util.Objects.requireNonNull(file.getStorageKey()));
-                    logger.info("Successfully deleted file '{}' from S3 with key: {}", file.getName(),
-                            file.getStorageKey());
-                } catch (Exception e) {
-                    logger.error("Failed to delete file '{}' (key: {}) from S3. Skipping database deletion.",
-                            file.getName(), file.getStorageKey(), e);
-                    // If S3 deletion fails, we skip DB deletion to retry later
-                    continue;
+            List<FileHistory> history = fileHistoryRepository.findByFileEntityId(file.getId());
+            try {
+                // Every stored object for this file, current and historical.
+                // Skipping the history rows used to leave their S3 objects
+                // orphaned forever.
+                for (FileHistory version : history) {
+                    deleteObject(version.getStorageKey());
                 }
+                if (!file.isDirectory()) {
+                    deleteObject(file.getStorageKey());
+                }
+            } catch (Exception e) {
+                logger.error("Failed to delete stored objects for '{}' (ID: {}). "
+                        + "Leaving the metadata in place so the next run retries.",
+                        file.getName(), file.getId(), e);
+                failed++;
+                continue;
             }
-            // Delete from database
+
+            fileHistoryRepository.deleteAll(history);
             fileRepository.delete(file);
-            logger.info("Successfully deleted file metadata for '{}' (ID: {}) from database.", file.getName(),
-                    file.getId());
+            deleted++;
+            logger.debug("Hard-deleted '{}' (ID: {}) and {} version(s)", file.getName(), file.getId(),
+                    history.size());
         }
 
-        logger.info("Scheduled deletion job finished.");
+        logger.info("Scheduled deletion job finished. deleted={}, retryNextRun={}", deleted, failed);
+    }
+
+    private void deleteObject(String storageKey) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return;
+        }
+        fileStorage.delete(storageKey);
+    }
+
+    /** Depth in the folder tree, used to delete leaves before their parents. */
+    private static int depthOf(FileEntity file) {
+        int depth = 0;
+        for (FileEntity p = file.getParent(); p != null; p = p.getParent()) {
+            depth++;
+        }
+        return depth;
     }
 }

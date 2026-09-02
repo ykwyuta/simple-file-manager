@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Index;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
@@ -14,7 +15,14 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
-@Table(name = "files")
+@Table(name = "files", indexes = {
+        // Mirrors the index strategy in docs/metadata_schema.md.
+        @Index(name = "idx_files_parent", columnList = "parent_folder_id"),
+        @Index(name = "idx_files_owner_user", columnList = "owner_user_id"),
+        @Index(name = "idx_files_owner_group", columnList = "owner_group_id"),
+        @Index(name = "idx_files_name", columnList = "name"),
+        @Index(name = "idx_files_deleted_at", columnList = "deleted_at")
+})
 public class FileEntity {
 
     @Id
@@ -45,6 +53,14 @@ public class FileEntity {
     @Column(name = "storage_key")
     private String storageKey;
 
+    /** Byte length of the stored object. Null for directories. */
+    @Column(name = "size_bytes")
+    private Long sizeBytes;
+
+    /** MIME type reported at upload time. Null for directories. */
+    @Column(name = "content_type", length = 255)
+    private String contentType;
+
     @Column(name = "custom_tags", columnDefinition = "TEXT")
     private String customTags;
 
@@ -62,8 +78,16 @@ public class FileEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    @Column(name = "versioning_enabled")
-    private Boolean versioningEnabled;
+    /**
+     * Whether new versions are kept for files in this folder.
+     *
+     * <p>
+     * Defaults to {@code FALSE} rather than staying null: a null here made
+     * every folder page that had never toggled versioning fail to render with
+     * "cannot convert from null to boolean".
+     */
+    @Column(name = "versioning_enabled", nullable = false)
+    private Boolean versioningEnabled = Boolean.FALSE;
 
     @Column(name = "is_locked")
     private boolean isLocked = false;
@@ -87,6 +111,22 @@ public class FileEntity {
 
     public String getName() {
         return name;
+    }
+
+    public Long getSizeBytes() {
+        return sizeBytes;
+    }
+
+    public void setSizeBytes(Long sizeBytes) {
+        this.sizeBytes = sizeBytes;
+    }
+
+    public String getContentType() {
+        return contentType;
+    }
+
+    public void setContentType(String contentType) {
+        this.contentType = contentType;
     }
 
     public void setName(String name) {
@@ -186,7 +226,7 @@ public class FileEntity {
     }
 
     public void setVersioningEnabled(Boolean versioningEnabled) {
-        this.versioningEnabled = versioningEnabled;
+        this.versioningEnabled = versioningEnabled == null ? Boolean.FALSE : versioningEnabled;
     }
 
     public boolean isLocked() {

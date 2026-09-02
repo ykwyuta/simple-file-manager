@@ -1,26 +1,26 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org"
+    xmlns:sec="http://www.thymeleaf.org/extras/spring-security" lang="ja">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Search Results - File Manager</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
+<head th:replace="~{fragments/layout :: head('検索結果 | File Manager')}"></head>
 
 <body>
+    <svg th:replace="~{fragments/layout :: icons}"></svg>
     <div class="container">
         <header>
-            <h1><i class="fas fa-search"></i> Search Results</h1>
-            <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to Home</a>
+            <h1><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg> 検索結果</h1>
+            <a href="/" class="btn btn-secondary"><svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg> ファイル一覧に戻る</a>
         </header>
 
         <div class="search-bar" style="margin-bottom: 2rem;">
-            <form action="/search" method="get" style="display: flex; gap: 0.5rem; width: 100%;">
-                <input type="text" name="query" class="form-control" th:value="${query}" placeholder="Search files...">
-                <input type="text" name="tags" class="form-control" th:value="${tags}"
-                    placeholder="Tags (comma separated)">
-                <button type="submit" class="btn btn-primary">Search</button>
+            <form th:action="@{/search}" method="get" style="display: flex; gap: 0.5rem; width: 100%;">
+                <label for="searchQuery" class="visually-hidden">ファイル名</label>
+                <input type="text" id="searchQuery" name="query" class="form-control" th:value="${query}"
+                    placeholder="ファイル名で検索...">
+                <label for="searchTags" class="visually-hidden">タグ</label>
+                <input type="text" id="searchTags" name="tags" class="form-control" th:value="${tags}"
+                    placeholder="タグ (カンマ区切り)">
+                <button type="submit" class="btn btn-primary">検索</button>
             </form>
         </div>
 
@@ -28,21 +28,21 @@
             <table class="file-list">
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Location</th>
-                        <th>Modified</th>
-                        <th>Actions</th>
+                        <th scope="col">名前</th>
+                        <th scope="col">場所</th>
+                        <th scope="col">更新日時</th>
+                        <th scope="col">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr th:each="file : ${files}">
                         <td>
                             <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}" class="folder-link">
-                                <i class="fas fa-folder file-icon" style="color: #fbbf24;"></i>
+                                <svg class="icon file-icon folder-icon" aria-hidden="true"><use href="#i-folder"></use></svg>
                                 <span th:text="${file.name}">Folder</span>
                             </a>
                             <span th:unless="${file.directory}" class="folder-link" style="cursor: default;">
-                                <i class="fas fa-file file-icon" style="color: #94a3b8;"></i>
+                                <svg class="icon file-icon" aria-hidden="true"><use href="#i-file"></use></svg>
                                 <span th:text="${file.name}">File</span>
                             </span>
                         </td>
@@ -55,18 +55,19 @@
                             <div class="actions">
                                 <a th:unless="${file.directory}" th:href="@{'/api/files/' + ${file.id}}"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                                    <i class="fas fa-download"></i>
+                                    <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
                                 </a>
                                 <a th:if="${file.directory}" th:href="@{'/?folderId=' + ${file.id}}"
                                     class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                                    <i class="fas fa-folder-open"></i>
+                                    <svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg>
                                 </a>
                             </div>
                         </td>
                     </tr>
                     <tr th:if="${#lists.isEmpty(files)}">
-                        <td colspan="4" style="text-align: center; color: var(--text-secondary);">
-                            No results found.
+                        <td colspan="4" class="empty-state"
+                            th:text="${hasCriteria} ? '条件に一致するファイルはありませんでした。' : '検索条件を入力してください。'">
+                            検索条件を入力してください。
                         </td>
                     </tr>
                 </tbody>

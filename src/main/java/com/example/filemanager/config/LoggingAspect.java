@@ -20,27 +20,38 @@ public class LoggingAspect {
     public void serviceLayer() {
     }
 
-    @Pointcut("execution(* com.example.filemanager.repository..*(..))")
-    public void repositoryLayer() {
-    }
-
-    @Around("serviceLayer() || repositoryLayer()")
+    /**
+     * Traces service calls.
+     *
+     * <p>
+     * Arguments and return values go out at DEBUG, not INFO: they contain file
+     * names, tags and user names, and emitting them for every call writes user
+     * data into the application log permanently and drowns out everything else.
+     * Timing stays at DEBUG too; only failures are logged unconditionally.
+     *
+     * <p>
+     * The repository layer is deliberately not advised — Hibernate already has
+     * {@code spring.jpa.show-sql} for that, and wrapping every repository call
+     * doubled the log volume for no extra information.
+     */
+    @Around("serviceLayer()")
     public Object logExecution(ProceedingJoinPoint joinPoint) throws Throwable {
         String methodName = joinPoint.getSignature().toShortString();
-        Object[] args = joinPoint.getArgs();
 
-        logger.info("START {} args={}", methodName, Arrays.toString(args));
+        if (logger.isDebugEnabled()) {
+            logger.debug("START {} args={}", methodName, Arrays.toString(joinPoint.getArgs()));
+        }
 
         long startTime = System.currentTimeMillis();
         try {
             Object result = joinPoint.proceed();
-            long endTime = System.currentTimeMillis();
-            logger.info("END {} executionTime={}ms result={}", methodName, (endTime - startTime), result);
+            if (logger.isDebugEnabled()) {
+                logger.debug("END {} executionTime={}ms", methodName, System.currentTimeMillis() - startTime);
+            }
             return result;
         } catch (Throwable e) {
-            long endTime = System.currentTimeMillis();
-            logger.error("EXCEPTION {} executionTime={}ms exception={}", methodName, (endTime - startTime),
-                    e.getMessage(), e);
+            logger.error("EXCEPTION {} executionTime={}ms exception={}", methodName,
+                    System.currentTimeMillis() - startTime, e.getMessage(), e);
             throw e;
         }
     }

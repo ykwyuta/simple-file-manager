@@ -24,8 +24,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -94,10 +92,13 @@ public class FileController {
 
     String encodedFilename = URLEncoder.encode(fileEntity.getName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
 
+    // Always served as an attachment with nosniff: rendering user-uploaded
+    // content inline in the app's own origin would turn any uploaded HTML into
+    // stored XSS.
     return ResponseEntity.ok()
         .contentType(Objects.requireNonNull(MediaType.APPLICATION_OCTET_STREAM))
-        .header(
-            HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFilename)
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFilename)
+        .header("X-Content-Type-Options", "nosniff")
         .body(resource);
   }
 
@@ -116,10 +117,8 @@ public class FileController {
   }
 
   @PutMapping("/{id}/lock")
-  public ResponseEntity<Void> updateLockStatus(@PathVariable Long id, @RequestBody LockRequest lockRequest,
-      @AuthenticationPrincipal UserDetails userDetails) {
-    fileService.updateLockStatus(Objects.requireNonNull(id), lockRequest.isLocked(),
-        Objects.requireNonNull(userDetails.getUsername()));
+  public ResponseEntity<Void> updateLockStatus(@PathVariable Long id, @RequestBody LockRequest lockRequest) {
+    fileService.updateLockStatus(Objects.requireNonNull(id), lockRequest.isLocked());
     return ResponseEntity.noContent().build();
   }
 

@@ -14,6 +14,8 @@ public class FileResponse {
     private Long groupId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Long sizeBytes;
+    private String contentType;
 
     public FileResponse(FileEntity entity) {
         this.id = entity.getId();
@@ -27,6 +29,16 @@ public class FileResponse {
         this.groupId = entity.getGroup().getId();
         this.createdAt = entity.getCreatedAt();
         this.updatedAt = entity.getUpdatedAt();
+        this.sizeBytes = entity.getSizeBytes();
+        this.contentType = entity.getContentType();
+    }
+
+    public Long getSizeBytes() {
+        return sizeBytes;
+    }
+
+    public String getContentType() {
+        return contentType;
     }
 
     // Getters

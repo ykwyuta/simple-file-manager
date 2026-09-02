@@ -9,8 +9,9 @@ import com.example.filemanager.exception.DuplicateFileException;
 import com.example.filemanager.exception.ResourceNotFoundException;
 import com.example.filemanager.repository.FileHistoryRepository;
 import com.example.filemanager.repository.FileRepository;
-import io.awspring.cloud.s3.S3Resource;
-import io.awspring.cloud.s3.S3Template;
+import com.example.filemanager.repository.GroupRepository;
+import com.example.filemanager.repository.UserRepository;
+import com.example.filemanager.storage.FileStorage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -30,7 +31,6 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,7 +48,13 @@ class FileServiceTest {
   private FileHistoryRepository fileHistoryRepository;
 
   @Mock
-  private S3Template s3Template;
+  private FileStorage fileStorage;
+
+  @Mock
+  private UserRepository userRepository;
+
+  @Mock
+  private GroupRepository groupRepository;
 
   @Mock
   private PermissionService permissionService;
@@ -71,8 +77,6 @@ class FileServiceTest {
 
     testUser.setGroups(Set.of(testGroup));
 
-    // Inject the bucket name for tests
-    ReflectionTestUtils.setField(fileService, "bucketName", "test-bucket");
   }
 
   private void setupAuthentication() {
@@ -128,6 +132,8 @@ class FileServiceTest {
     request.setPermissions("750");
 
     when(fileRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(parentFolder));
+    // Creating inside a folder now requires write permission on that folder.
+    when(permissionService.canWrite(parentFolder, testUser)).thenReturn(true);
     when(fileRepository.findByParentAndNameAndDeletedAtIsNull(parentFolder, "Images"))
         .thenReturn(Optional.empty());
     when(fileRepository.save(any(FileEntity.class)))
@@ -204,18 +210,20 @@ class FileServiceTest {
     assertFalse(savedEntity.isDirectory());
     assertNotNull(savedEntity.getStorageKey());
     assertEquals(testUser, savedEntity.getOwner());
-    assertEquals(0644, savedEntity.getPermissions());
+    // Stored as the three decimal digits shown in the UI (644), not octal 0644.
+    assertEquals(644, savedEntity.getPermissions());
 
-    ArgumentCaptor<String> bucketNameCaptor = ArgumentCaptor.forClass(String.class);
+
     ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-    verify(s3Template, times(1))
-        .upload(bucketNameCaptor.capture(), keyCaptor.capture(), any(java.io.InputStream.class));
-    assertEquals("test-bucket", bucketNameCaptor.getValue());
-    assertTrue(keyCaptor.getValue().endsWith("/test.txt"));
+    verify(fileStorage, times(1)).upload(keyCaptor.capture(), any(java.io.InputStream.class));
+    // The key is an opaque UUID: the display name lives in the database, not
+    // in the storage path.
+    assertFalse(keyCaptor.getValue().contains("test.txt"));
+    assertDoesNotThrow(() -> java.util.UUID.fromString(keyCaptor.getValue()));
   }
 
   @Test
-  void uploadFile_Failure_ParentNotFound() {
+  void uploadFile_Failure_ParentNotFound() throws IOException {
     setupAuthentication();
     // Given
     MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
@@ -229,11 +237,11 @@ class FileServiceTest {
         ResourceNotFoundException.class,
         () -> fileService.uploadFile(file, parentFolderId, permissions));
     verify(fileRepository, never()).save(any());
-    verify(s3Template, never()).upload(anyString(), anyString(), any());
+    verify(fileStorage, never()).upload(anyString(), any());
   }
 
   @Test
-  void uploadFile_Failure_DuplicateName() {
+  void uploadFile_Failure_DuplicateName() throws IOException {
     setupAuthentication();
     // Given
     MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
@@ -248,7 +256,7 @@ class FileServiceTest {
         DuplicateFileException.class,
         () -> fileService.uploadFile(file, parentFolderId, permissions));
     verify(fileRepository, never()).save(any());
-    verify(s3Template, never()).upload(anyString(), anyString(), any());
+    verify(fileStorage, never()).upload(anyString(), any());
   }
 
   @Test
@@ -261,12 +269,11 @@ class FileServiceTest {
     fileEntity.setStorageKey("some-key/test.txt");
 
     byte[] fileContent = "test data".getBytes();
-    S3Resource s3Resource = mock(S3Resource.class);
+
 
     // Note: We no longer need to mock findById for this test as the entity is
     // passed directly.
-    when(s3Template.download("test-bucket", "some-key/test.txt")).thenReturn(s3Resource);
-    when(s3Resource.getInputStream()).thenReturn(new ByteArrayInputStream(fileContent));
+    when(fileStorage.download("some-key/test.txt")).thenReturn(fileContent);
 
     // When
     byte[] result = fileService.downloadFile(fileEntity);
@@ -299,7 +306,7 @@ class FileServiceTest {
   }
 
   @Test
-  void uploadFile_Failure_InvalidPermissions() {
+  void uploadFile_Failure_InvalidPermissions() throws IOException {
     setupAuthentication();
     // Given
     MockMultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "test data".getBytes());
@@ -311,7 +318,7 @@ class FileServiceTest {
         com.example.filemanager.exception.InvalidPermissionFormatException.class,
         () -> fileService.uploadFile(file, parentFolderId, permissions));
     verify(fileRepository, never()).save(any());
-    verify(s3Template, never()).upload(anyString(), anyString(), any());
+    verify(fileStorage, never()).upload(anyString(), any());
   }
 
   @Test
@@ -407,18 +414,15 @@ class FileServiceTest {
 
     List<FileEntity> foundFiles = Arrays.asList(file1, file2);
 
-    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(foundFiles);
-    when(permissionService.canRead(file1, testUser)).thenReturn(true);
-    when(permissionService.canRead(file2, testUser)).thenReturn(true);
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any()))
+        .thenReturn(foundFiles);
 
     // When
     List<FileEntity> results = fileService.searchFiles("document", "work");
 
-    // Then
-    assertEquals(
-        2,
-        results.size()); // Both files should be checked by the spec, let's assume it returns both
-    // for simplicity in mocking
+    // Then: the name, tag and permission predicates are all in the
+    // specification, so the service returns what the query returned.
+    assertEquals(2, results.size());
   }
 
   @Test
@@ -435,9 +439,9 @@ class FileServiceTest {
 
     List<FileEntity> foundFiles = Arrays.asList(file1, file2);
 
-    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(foundFiles);
-    when(permissionService.canRead(file1, testUser)).thenReturn(true);
-    when(permissionService.canRead(file2, testUser)).thenReturn(false);
+    // The specification carries the permission predicate, so unreadable rows
+    // never come back from the database in the first place.
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(List.of(file1));
 
     // When
     List<FileEntity> results = fileService.searchFiles("report", null);
@@ -677,30 +681,35 @@ class FileServiceTest {
   }
 
   @Test
-  void listDeletedFiles_Success_FiltersByPermission() {
+  void listDeletedFiles_ShowsOnlyTheRootsOfEachDeletedSubtree() {
     setupAuthentication();
-    // Given
-    FileEntity deletedFileWithPermission = new FileEntity();
-    deletedFileWithPermission.setId(1L);
-    deletedFileWithPermission.setName("deleted1.txt");
+    // Given: a deleted folder and a file that disappeared *with* it.
+    java.time.LocalDateTime deletedAt = java.time.LocalDateTime.now();
 
-    FileEntity deletedFileWithoutPermission = new FileEntity();
-    deletedFileWithoutPermission.setId(2L);
-    deletedFileWithoutPermission.setName("deleted2.txt");
+    FileEntity deletedFolder = new FileEntity();
+    deletedFolder.setId(1L);
+    deletedFolder.setName("folder");
+    deletedFolder.setDirectory(true);
+    deletedFolder.setDeletedAt(deletedAt);
 
-    List<FileEntity> allDeletedFiles = Arrays.asList(deletedFileWithPermission, deletedFileWithoutPermission);
+    FileEntity cascadedChild = new FileEntity();
+    cascadedChild.setId(2L);
+    cascadedChild.setName("child.txt");
+    cascadedChild.setParent(deletedFolder);
+    cascadedChild.setDeletedAt(deletedAt);
 
-    when(fileRepository.findAllByDeletedAtIsNotNull()).thenReturn(allDeletedFiles);
-    when(permissionService.canRead(deletedFileWithPermission, testUser)).thenReturn(true);
-    when(permissionService.canRead(deletedFileWithoutPermission, testUser)).thenReturn(false);
+    // Readability is enforced by the specification, so the repository returns
+    // only rows this user may see.
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any()))
+        .thenReturn(Arrays.asList(deletedFolder, cascadedChild));
 
     // When
     List<FileEntity> result = fileService.listDeletedFiles();
 
-    // Then
+    // Then: only the folder is offered, because restoring it brings the child back.
     assertEquals(1, result.size());
-    assertEquals("deleted1.txt", result.get(0).getName());
-    verify(fileRepository, times(1)).findAllByDeletedAtIsNotNull();
+    assertEquals("folder", result.get(0).getName());
+    verify(fileRepository, times(1)).findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any());
   }
 
   @Test
@@ -826,16 +835,16 @@ class FileServiceTest {
 
     List<FileEntity> allFiles = Arrays.asList(file1, file2);
 
-    when(fileRepository.findAllByParentAndDeletedAtIsNull(null)).thenReturn(allFiles);
-    when(permissionService.canRead(file1, testUser)).thenReturn(true);
-    when(permissionService.canRead(file2, testUser)).thenReturn(true);
+    // Permission filtering happens in the query now, so the repository hands
+    // back exactly the rows the user may see.
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(allFiles);
 
     // When
     List<FileEntity> result = fileService.listFiles(null);
 
     // Then
     assertEquals(2, result.size());
-    verify(fileRepository, times(1)).findAllByParentAndDeletedAtIsNull(null);
+    verify(fileRepository, times(1)).findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any());
   }
 
   @Test
@@ -856,15 +865,14 @@ class FileServiceTest {
 
     when(fileRepository.findByIdAndDeletedAtIsNull(parentId)).thenReturn(Optional.of(parent));
     when(permissionService.canRead(parent, testUser)).thenReturn(true);
-    when(fileRepository.findAllByParentAndDeletedAtIsNull(parent)).thenReturn(allFiles);
-    when(permissionService.canRead(file1, testUser)).thenReturn(true);
+    when(fileRepository.findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any())).thenReturn(allFiles);
 
     // When
     List<FileEntity> result = fileService.listFiles(parentId);
 
     // Then
     assertEquals(1, result.size());
-    verify(fileRepository, times(1)).findAllByParentAndDeletedAtIsNull(parent);
+    verify(fileRepository, times(1)).findAll(org.mockito.ArgumentMatchers.<Specification<FileEntity>>any());
   }
 
   @Test
@@ -964,7 +972,8 @@ class FileServiceTest {
     when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(fileEntity));
     when(permissionService.canRead(fileEntity, testUser)).thenReturn(true);
     when(permissionService.canWrite(fileEntity, testUser)).thenReturn(true);
-    when(fileHistoryRepository.findById(versionId)).thenReturn(Optional.of(historyToRestore));
+    when(fileHistoryRepository.findByIdAndFileEntityId(versionId, fileId))
+        .thenReturn(Optional.of(historyToRestore));
     when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(fileId)).thenReturn(Collections.emptyList());
 
     // When
@@ -1070,6 +1079,7 @@ class FileServiceTest {
     FileEntity file = new FileEntity();
     file.setId(1L);
     file.setName("history-file.txt");
+    file.setStorageKey("existing-key");
     FileHistory v1 = new FileHistory();
     v1.setVersion(1);
 
@@ -1089,7 +1099,7 @@ class FileServiceTest {
     when(permissionService.canRead(any(), any())).thenReturn(true);
     when(fileRepository.findByParentAndNameAndDeletedAtIsNull(any(), any())).thenReturn(Optional.empty());
     when(fileHistoryRepository.findByFileEntityIdOrderByVersionDesc(1L)).thenReturn(List.of(v1));
-    when(fileRepository.save(any(FileEntity.class))).thenReturn(file);
+    when(fileRepository.save(any(FileEntity.class))).thenAnswer(i -> i.getArgument(0));
 
     // Action 1: Move the file
     fileService.moveFile(1L, 11L);
@@ -1224,7 +1234,7 @@ class FileServiceTest {
     assertThrows(org.springframework.security.access.AccessDeniedException.class,
         () -> fileService.restoreFileVersion(fileId, versionId));
 
-    verify(fileHistoryRepository, never()).findById(any());
+    verify(fileHistoryRepository, never()).findByIdAndFileEntityId(any(), any());
     verify(fileRepository, never()).save(any());
   }
 

@@ -1,0 +1,14 @@
+{
+  "name": "file-manager-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end tests for the file manager, covering the findings from the security and usability review.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0"
+  }
+}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ja">
+
+<head th:replace="~{fragments/layout :: head('ログイン | File Manager')}"></head>
+
+<body class="login-page">
+    <svg th:replace="~{fragments/layout :: icons}"></svg>
+    <main class="login-card">
+        <h1><svg class="icon" aria-hidden="true"><use href="#i-cloud"></use></svg> File Manager</h1>
+
+        <div th:if="${param.error}" class="alert alert-error" role="alert">
+            <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+            <span>ユーザー名またはパスワードが正しくありません。</span>
+        </div>
+        <div th:if="${param.logout}" class="alert alert-success" role="status">
+            <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+            <span>ログアウトしました。</span>
+        </div>
+
+        <form th:action="@{/login}" method="post">
+            <div class="form-group">
+                <label for="username">ユーザー名</label>
+                <input type="text" id="username" name="username" class="form-control" required autofocus
+                    autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">パスワード</label>
+                <input type="password" id="password" name="password" class="form-control" required
+                    autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary login-submit">ログイン</button>
+        </form>
+    </main>
+</body>
+
+</html>
